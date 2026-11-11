@@ -532,7 +532,29 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="mt-10 overflow-x-auto">
+            {/* Phones: the same rows as cards. A table this wide can only be
+                read by dragging it sideways, and half of it hangs off the edge. */}
+            <div className="mt-10 grid gap-3 md:hidden">
+              {LAWS.map((row) => (
+                <div key={row.country} className="card min-w-0 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm font-medium text-ink">{row.country}</p>
+                    <span className="shrink-0 rounded-full border border-line bg-mist px-2.5 py-1 text-[0.6875rem] font-medium text-ink-soft">
+                      {row.deadline}
+                    </span>
+                  </div>
+                  <p className="mt-2.5 text-[0.8125rem] leading-relaxed text-ink-soft">{row.law}</p>
+                  <p className="mt-2.5 text-xs leading-relaxed text-muted">
+                    <span className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
+                      If ignored
+                    </span>{" "}
+                    · {row.escalation}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-10 hidden overflow-x-auto md:block">
               <table className="w-full min-w-[46rem] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-line-strong text-[0.6875rem] uppercase tracking-[0.14em] text-muted">

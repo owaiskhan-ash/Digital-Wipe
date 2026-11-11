@@ -97,6 +97,14 @@
     overflow-x: clip;
   }
 
+  /* A flex or grid item defaults to min-width:auto, so one long token — an
+     inspect URL, an address — sets that column's width and the card around it
+     hangs off the edge of the screen. Let every item shrink, then let the
+     content inside it wrap or ellipsis. */
+  :where(.grid > *, .flex > *) {
+    min-width: 0;
+  }
+
   /* A URL or an address with no spaces to break at must wrap, not stretch its
      container past the viewport. */
   :where(p, dd, dt, h1, h2, h3, h4, li, span, td, th) {
@@ -108,6 +116,18 @@
   video,
   canvas {
     max-width: 100%;
+  }
+
+  /* Phones: momentum on inner scrollers, and a scroll that ends where the box
+     ends instead of dragging the page behind it. */
+  :where(.overflow-y-auto, .overflow-x-auto, .overflow-auto) {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* A tap should land instantly, not wait 300ms for a double-tap zoom. */
+  :where(button, a, [role="button"]) {
+    touch-action: manipulation;
   }
 
   ::selection {

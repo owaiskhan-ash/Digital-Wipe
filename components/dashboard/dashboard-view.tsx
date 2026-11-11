@@ -221,7 +221,7 @@ export function DashboardView() {
                   {scan.profile.emails.join(", ")}
                 </span>
               )}
-              <span>· {formatDate(scan.createdAt)}</span>
+              <span className="text-[0.75rem] text-muted">Scanned {formatDate(scan.createdAt)}</span>
             </div>
           </div>
 
@@ -310,7 +310,7 @@ export function DashboardView() {
         </div>
 
         {/* Tabs */}
-        <div className="mt-8 flex items-center gap-1 overflow-x-auto border-b border-line pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-8 flex flex-wrap items-center gap-1 border-b border-line pb-3">
           {tabs.map((item) => (
             <button
               key={item.id}
