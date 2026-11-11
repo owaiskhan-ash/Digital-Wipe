@@ -8,7 +8,7 @@ import { ScanFlow } from "@/components/scan/scan-flow";
 export const metadata: Metadata = {
   title: "Find the sites publishing your number",
   description:
-    "Enter a phone number or an email address. Untrace searches the open web and 45 data brokers, then shows every page that publishes it and who to write to.",
+    "Enter a phone number or an email address. Untrace searches the open web, then shows every page that publishes it and who to write to.",
   alternates: { canonical: "/scan" },
   openGraph: {
     url: "/scan",

@@ -3,7 +3,6 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
-  ArrowUpRight,
   Check,
   ChevronDown,
   Clock3,
@@ -18,8 +17,6 @@ import {
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CategoryIcon, SectionLabel } from "@/components/ui";
-import { BROKERS } from "@/lib/brokers";
-import { BREACH_COUNT } from "@/lib/breaches";
 import { CATEGORIES, type Category } from "@/lib/types";
 import {
   SITE_DESCRIPTION,
@@ -44,18 +41,14 @@ const CATEGORY_ORDER: Category[] = [
 ];
 
 const TICKER = [
-  "Spokeo",
-  "Whitepages",
-  "BeenVerified",
-  "Radaris",
-  "Acxiom",
-  "ZoomInfo",
-  "LexisNexis",
-  "MyLife",
-  "Oracle",
-  "FastPeopleSearch",
-  "LiveRamp",
-  "PeekYou",
+  "Caller-ID Apps",
+  "Agency Portfolios",
+  "Contact Footers",
+  "People Directories",
+  "B2B Lead Lists",
+  "Public Registries",
+  "Case Studies",
+  "Blog Mentions",
 ];
 
 const EXPOSURE = [
@@ -167,7 +160,7 @@ const QUESTIONS = [
   },
   {
     q: "How does the AI search find my listings?",
-    a: "The scan runs a grounded web search for the exact identifier you enter, phone number or email address, and reads the pages that mention it: directories, agency sites, contact footers, blogs and B2B indexes. Each result is checked against the contact address published on that site. The 45 curated brokers are the floor, not the ceiling.",
+    a: "The scan runs a live grounded web search for the exact phone number or email address you enter, reading the pages that mention it: directories, agency sites, contact footers, case studies, blogs and B2B indexes. Each result is checked against the contact address published on that site.",
   },
   {
     q: "Does Untrace send emails without my review?",
@@ -223,7 +216,7 @@ const STRUCTURED_DATA = {
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       featureList: [
         "Phone number and email address exposure scan across the open web",
-        "45 curated data brokers with their official opt-out pages",
+        "Automated extraction of website owner and privacy contact emails",
         "Statutory deletion requests for CCPA, GDPR, UK GDPR, DPDP, PIPEDA and the Australian Privacy Act",
         "One-click sending through the connected Gmail account",
         "Request tracking with follow-up reminders and CSV export",
@@ -283,9 +276,9 @@ export default function HomePage() {
 
               <p className="mt-7 max-w-xl text-[1.0625rem] leading-[1.7] text-ink-soft">
                 Start with the phone number or email address that keeps turning
-                up. Untrace searches the open web and a 45-source directory of
-                brokers, shows every page that carries your details, and writes
-                the deletion letter to each owner in the law that applies to you.
+                up. Untrace searches the open web, shows every page that carries
+                your details, and writes the deletion letter to each owner in the
+                law that applies to you.
               </p>
 
               <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -293,15 +286,15 @@ export default function HomePage() {
                   Run a free scan
                   <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
                 </Link>
-                <Link href="#coverage" className="btn btn-secondary">
-                  See what we cover
+                <Link href="#how" className="btn btn-secondary">
+                  See how it works
                 </Link>
               </div>
 
               <ul className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[0.8125rem] text-muted">
                 {[
-                  "Phone or email, no name needed",
-                  "45 verified opt-out pages",
+                  "Phone Number Scan & Email Scan",
+                  "Live open-web discovery",
                   "Send from your own Gmail",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-1.5">
@@ -350,7 +343,7 @@ export default function HomePage() {
                 ))}
               </div>
               <span className="ml-auto hidden shrink-0 text-[0.8125rem] text-muted sm:block">
-                and {BROKERS.length - TICKER.length} more
+                across the entire open web
               </span>
             </div>
           </div>
@@ -439,10 +432,6 @@ export default function HomePage() {
             <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {CATEGORY_ORDER.map((category) => {
                 const meta = CATEGORIES[category];
-                const count =
-                  category === "breach"
-                    ? BREACH_COUNT
-                    : BROKERS.filter((broker) => broker.category === category).length;
                 return (
                   <article
                     key={category}
@@ -454,9 +443,6 @@ export default function HomePage() {
                     <h3 className="mt-5 text-lg text-ink">{meta.label}</h3>
                     <p className="mt-2 flex-1 text-[0.8125rem] leading-relaxed text-muted">
                       {meta.blurb}
-                    </p>
-                    <p className="mt-5 text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
-                      {count} sources
                     </p>
                   </article>
                 );
@@ -574,62 +560,6 @@ export default function HomePage() {
             <p className="mt-5 text-xs leading-relaxed text-muted">
               Those are statutory maximums, not typical waits. People-search
               directories usually act within one to three weeks.
-            </p>
-          </div>
-        </section>
-
-        {/* Coverage */}
-        <section id="coverage" className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28">
-          <div className="container-page">
-            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-              <div className="max-w-2xl">
-                <SectionLabel>Coverage</SectionLabel>
-                <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
-                  {BROKERS.length} verified opt-out pages, plus whatever the search finds.
-                </h2>
-                <p className="mt-4 max-w-xl text-[0.9375rem] leading-relaxed text-ink-soft">
-                  Every name below links to that company&apos;s own opt-out page.
-                  You can go around Untrace entirely. We won&apos;t mind.
-                </p>
-              </div>
-              <Link href="/scan" className="btn btn-secondary btn-sm self-start md:self-auto">
-                Check your number
-                <ArrowUpRight className="size-4" strokeWidth={1.8} aria-hidden />
-              </Link>
-            </div>
-
-            <ul className="mt-12 grid grid-cols-1 gap-x-8 gap-y-0 sm:grid-cols-2 lg:grid-cols-3">
-              {BROKERS.map((broker) => (
-                <li key={broker.id}>
-                  <a
-                    href={broker.removalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center justify-between gap-3 border-b border-line py-3 transition-colors hover:border-line-strong"
-                  >
-                    <span className="flex min-w-0 items-center gap-2.5">
-                      <span
-                        className="size-1.5 shrink-0 rounded-full bg-line-strong transition-colors group-hover:bg-moss"
-                        aria-hidden
-                      />
-                      <span className="truncate text-sm text-ink-soft transition-colors group-hover:text-ink">
-                        {broker.name}
-                      </span>
-                    </span>
-                    <ArrowUpRight
-                      className="size-3.5 shrink-0 text-line-strong transition-colors group-hover:text-moss"
-                      strokeWidth={1.8}
-                      aria-hidden
-                    />
-                  </a>
-                </li>
-              ))}
-            </ul>
-
-            <p className="mt-8 max-w-2xl text-xs leading-relaxed text-muted">
-              Opt-out pages move now and then. Every link opens the company&apos;s
-              current privacy or suppression page, and your report always shows the
-              destination before you send anything.
             </p>
           </div>
         </section>

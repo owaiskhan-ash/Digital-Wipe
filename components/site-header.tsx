@@ -6,7 +6,7 @@ import { AuthButton } from "./auth-button";
 const NAV = [
   { href: "/#how", label: "How it works" },
   { href: "/#sources", label: "What we find" },
-  { href: "/#coverage", label: "Coverage" },
+  { href: "/#laws", label: "Legal rights" },
   { href: "/#questions", label: "Questions" },
 ];
 

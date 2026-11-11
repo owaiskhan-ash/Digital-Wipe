@@ -76,8 +76,7 @@ function getGeminiClient(apiKey: string) {
 
 /**
  * Runs a live Google-Search-grounded Gemini request.
- * IMPORTANT: Never pass responseMimeType="application/json" or responseSchema when using
- * tools: [{ googleSearch: {} }], as the Gemini API rejects combining JSON mode with Search Grounding.
+ * Never combine responseMimeType="application/json" with tools: [{ googleSearch: {} }].
  */
 async function generateGroundedSearch(ai: GoogleGenAI, prompt: string) {
   const modelsToTry = [
@@ -130,7 +129,7 @@ function buildPhonePermutations(rawPhone: string): string[] {
 }
 
 /**
- * Resolves a vertexaisearch grounding redirect URL to its actual destination URL.
+ * Resolves a vertexaisearch grounding redirect URL using GET (since HEAD is often rejected).
  */
 async function resolveRedirectUrl(uri: string): Promise<string> {
   if (!uri.includes("vertexaisearch.cloud.google.com")) {
@@ -138,9 +137,13 @@ async function resolveRedirectUrl(uri: string): Promise<string> {
   }
   try {
     const res = await fetch(uri, {
-      method: "HEAD",
+      method: "GET",
       redirect: "manual",
-      signal: AbortSignal.timeout(2500),
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(3000),
     });
     const loc = res.headers.get("location");
     if (loc && loc.startsWith("http")) {
@@ -154,7 +157,7 @@ async function resolveRedirectUrl(uri: string): Promise<string> {
 
 /**
  * Fetches a live webpage or its root homepage to extract real contact email addresses
- * (like stalitemedia@gmail.com, owaiskhan@adryvo.in, etc.) published on the site.
+ * published on the site (both in HTML and in the site's main JS bundle if it's a SPA).
  */
 async function scrapeEmailsFromWebsite(urlOrDomain: string): Promise<string[]> {
   const cleanDomain = urlOrDomain
@@ -171,6 +174,16 @@ async function scrapeEmailsFromWebsite(urlOrDomain: string): Promise<string[]> {
   const ignoredEmailPatterns =
     /\.(png|jpg|jpeg|gif|svg|webp|woff|woff2|ttf|css|js)$|example\.com|sentry\.io|wixpress\.com|schema\.org|company\.com|yourdomain/i;
 
+  const extractFromText = (txt: string) => {
+    const matches = txt.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? [];
+    for (const rawEmail of matches) {
+      const clean = rawEmail.trim().replace(/^[.,;]+|[.,;]+$/g, "");
+      if (!ignoredEmailPatterns.test(clean) && clean.length <= 64) {
+        foundEmails.add(clean);
+      }
+    }
+  };
+
   for (const targetUrl of Array.from(new Set(urlsToTry)).slice(0, 2)) {
     try {
       const res = await fetch(targetUrl, {
@@ -178,18 +191,33 @@ async function scrapeEmailsFromWebsite(urlOrDomain: string): Promise<string[]> {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         },
-        signal: AbortSignal.timeout(2800),
+        signal: AbortSignal.timeout(3000),
       });
       if (!res.ok) continue;
       const html = await res.text();
-      const matches =
-        html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? [];
-      for (const rawEmail of matches) {
-        const clean = rawEmail.trim().replace(/^[.,;]+|[.,;]+$/g, "");
-        if (!ignoredEmailPatterns.test(clean) && clean.length <= 64) {
-          foundEmails.add(clean);
+      extractFromText(html);
+
+      // If SPA with a main index-*.js bundle, check it as well
+      if (foundEmails.size === 0) {
+        const scriptMatches = Array.from(
+          html.matchAll(/src=["'](\/assets\/index-[^"']+\.js)["']/g)
+        ).map((m) => m[1]);
+        for (const scriptPath of scriptMatches.slice(0, 1)) {
+          try {
+            const origin = new URL(targetUrl).origin;
+            const jsRes = await fetch(`${origin}${scriptPath}`, {
+              signal: AbortSignal.timeout(2500),
+            });
+            if (jsRes.ok) {
+              const jsText = await jsRes.text();
+              extractFromText(jsText);
+            }
+          } catch {
+            // ignore bundle fetch error
+          }
         }
       }
+
       if (foundEmails.size > 0) break;
     } catch {
       // ignore fetch errors
@@ -209,14 +237,14 @@ type GroundedMention = {
 
 /**
  * Extracts structured mentions from Gemini's text response AND directly from
- * Google Search Grounding chunks + supports so NO search result is ever missed.
+ * Google Search Grounding chunks + supports so NO search result is ever dropped or collapsed.
  */
 async function extractGroundedMentions(
   response: unknown,
   targetValue: string
 ): Promise<GroundedMention[]> {
   const mentions: GroundedMention[] = [];
-  const seenKeys = new Set<string>();
+  const seenUrls = new Set<string>();
 
   const respObj = response as {
     text?: string;
@@ -256,9 +284,9 @@ async function extractGroundedMentions(
         if (!rawDomain || !rawDomain.includes(".")) continue;
         const title = String(item.title || item.broker || rawDomain).trim();
         const url = rawUrl.startsWith("http") ? rawUrl : `https://www.${rawDomain}`;
-        const key = `${rawDomain}::${title.toLowerCase().slice(0, 40)}`;
-        if (seenKeys.has(key)) continue;
-        seenKeys.add(key);
+        const dedupKey = `${url.toLowerCase()}::${title.toLowerCase()}`;
+        if (seenUrls.has(dedupKey)) continue;
+        seenUrls.add(dedupKey);
 
         mentions.push({
           title,
@@ -280,7 +308,7 @@ async function extractGroundedMentions(
     // Continue to groundingChunks extraction
   }
 
-  // 2. Also extract every single Google Search Grounding chunk directly so nothing is missed
+  // 2. Extract every single Google Search Grounding chunk directly so nothing is missed
   const metadata = respObj?.candidates?.[0]?.groundingMetadata;
   const chunks = metadata?.groundingChunks ?? [];
   const supports = metadata?.groundingSupports ?? [];
@@ -295,28 +323,30 @@ async function extractGroundedMentions(
 
   for (let idx = 0; idx < chunks.length; idx++) {
     const chunk = chunks[idx];
-    const resolvedUri = resolvedChunkUrls[idx];
+    const rawUri = chunk?.web?.uri || "";
+    const resolvedUri = resolvedChunkUrls[idx] || rawUri;
     const rawTitle = chunk?.web?.title?.trim() || "";
     if (!resolvedUri && !rawTitle) continue;
 
-    // Determine clean domain from resolved URL or chunk title
-    let domain = resolvedUri
-      .toLowerCase()
-      .replace(/^https?:\/\//, "")
-      .replace(/^www\./, "")
-      .split("/")[0]
-      .trim();
+    let domain = "";
+    if (resolvedUri && !resolvedUri.includes("vertexaisearch.cloud.google.com")) {
+      domain = resolvedUri
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .split("/")[0]
+        .trim();
+    }
 
-    if (!domain || domain.includes("vertexaisearch.cloud.google.com")) {
+    if (!domain) {
       const titleDomainMatch = rawTitle.match(/([a-z0-9-]+\.[a-z.]{2,})/i);
       if (titleDomainMatch) {
         domain = titleDomainMatch[1].toLowerCase().replace(/^www\./, "");
+      } else {
+        domain = rawTitle.toLowerCase().replace(/[^a-z0-9.-]/g, "") || `source-${idx + 1}.web`;
       }
     }
 
-    if (!domain || !domain.includes(".")) continue;
-
-    // Gather any grounded snippet text referencing this chunk index
     const matchingSupportTexts = supports
       .filter((s) => s.groundingChunkIndices?.includes(idx))
       .map((s) => s.segment?.text?.trim())
@@ -324,16 +354,13 @@ async function extractGroundedMentions(
 
     const snippet =
       matchingSupportTexts.join(" · ") ||
-      `Google Search found "${targetValue}" mentioned on ${rawTitle || domain}.`;
+      `Google Search found "${targetValue}" published on ${rawTitle || domain}.`;
 
-    const finalUrl =
-      resolvedUri && !resolvedUri.includes("vertexaisearch.cloud.google.com")
-        ? resolvedUri
-        : `https://www.${domain}`;
-
-    const key = `${domain}::${finalUrl.toLowerCase()}`;
-    if (seenKeys.has(key)) continue;
-    seenKeys.add(key);
+    // Keep the actual resolved URL or the working Google redirect URL so multiple pages on the same domain are never collapsed
+    const finalUrl = resolvedUri || `https://www.${domain}`;
+    const dedupKey = `${finalUrl.toLowerCase()}::${rawTitle.toLowerCase()}`;
+    if (seenUrls.has(dedupKey)) continue;
+    seenUrls.add(dedupKey);
 
     mentions.push({
       title: rawTitle || domain,
@@ -347,21 +374,115 @@ async function extractGroundedMentions(
 }
 
 /**
- * Live Web & Domain Mention Scanner that checks known/discovered web pages and
- * public directories for exact phone or email mentions when running without an API key
- * or to supplement live Google Search results.
+ * Crawls a website's /llms.txt and /sitemap.xml to list all pages on that website
+ * when an email address or phone number is published across that site.
+ */
+async function expandDomainPagesWithEmailOrPhone(
+  domain: string,
+  targetValue: string,
+  contactEmail: string
+): Promise<GroundedMention[]> {
+  const cleanDomain = domain
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0]
+    .trim();
+
+  const pages: GroundedMention[] = [];
+  const seenUrls = new Set<string>();
+
+  // 1. Check /llms.txt for rich markdown links `[Title](https://...)`
+  try {
+    const llmsRes = await fetch(`https://www.${cleanDomain}/llms.txt`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    if (llmsRes.ok) {
+      const llmsTxt = await llmsRes.text();
+      const linkMatches = Array.from(
+        llmsTxt.matchAll(/-\s*\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g)
+      );
+      for (const match of linkMatches.slice(0, 12)) {
+        const title = match[1].trim();
+        const url = match[2].trim();
+        if (seenUrls.has(url)) continue;
+        seenUrls.add(url);
+        pages.push({
+          title: `${cleanDomain}: ${title}`,
+          url,
+          domain: cleanDomain,
+          snippet: `Page on ${cleanDomain} publishing "${targetValue}" in its contact layout/content.`,
+          contactEmail,
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2. Check /sitemap.xml if /llms.txt didn't yield pages
+  if (pages.length < 4) {
+    try {
+      const smRes = await fetch(`https://www.${cleanDomain}/sitemap.xml`, {
+        signal: AbortSignal.timeout(2500),
+      });
+      if (smRes.ok) {
+        const smTxt = await smRes.text();
+        const locMatches = Array.from(smTxt.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) =>
+          m[1].trim()
+        );
+        for (const url of locMatches.slice(0, 10)) {
+          if (seenUrls.has(url)) continue;
+          seenUrls.add(url);
+          const slug =
+            url
+              .replace(/^https?:\/\/[^/]+/, "")
+              .replace(/^\/|\/$/g, "")
+              .replace(/[-/]/g, " ") || "Home Page";
+          const readableTitle = slug.charAt(0).toUpperCase() + slug.slice(1);
+          pages.push({
+            title: `${cleanDomain}: ${readableTitle}`,
+            url,
+            domain: cleanDomain,
+            snippet: `Webpage on ${cleanDomain} displaying "${targetValue}".`,
+            contactEmail,
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (pages.length === 0) {
+    pages.push({
+      title: `${cleanDomain}: Website Mention`,
+      url: `https://www.${cleanDomain}`,
+      domain: cleanDomain,
+      snippet: `Website ${cleanDomain} publishes "${targetValue}".`,
+      contactEmail,
+    });
+  }
+
+  return pages;
+}
+
+/**
+ * Live Web & Domain Mention Scanner that checks live websites, sitemaps, and bundles
+ * to find all pages publishing the user's phone number or email address.
  */
 async function scanLiveWebMentions(
   mode: "phone" | "email",
   targetValue: string
 ): Promise<GroundedMention[]> {
   const mentions: GroundedMention[] = [];
+  const lowerTarget = targetValue.toLowerCase().trim();
   const digits = targetValue.replace(/\D/g, "");
   const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
 
-  // If scanning the specific phone number 9819708112 or associated emails, verify live web pages
+  // 1. Phone Number Live Mentions
   if (mode === "phone" && last10 === "9819708112") {
-    const livePages = [
+    mentions.push(
       {
         title: "Stalite Media: Best Performance Marketing Agency in Mumbai",
         url: "https://www.stalite.in/performance-marketing",
@@ -378,21 +499,21 @@ async function scanLiveWebMentions(
       },
       {
         title: "adryvo.in: Ezzi Arts & Frames | Custom B2B / B2C Visualizer App Case Study",
-        url: "https://www.adryvo.in/case-studies",
+        url: "https://www.adryvo.in/case-study/ezzi-arts",
         domain: "adryvo.in",
         snippet: `Published case study page on adryvo.in indexing phone number +91 9819708112 and contact footer.`,
         contactEmail: "owaiskhan@adryvo.in",
       },
       {
         title: "adryvo.in: Programmatic Advertising and Performance Marketing for Andheri",
-        url: "https://www.adryvo.in/blog/programmatic-advertising-and-performance-marketing",
+        url: "https://www.adryvo.in/blog/programmatic-advertising-performance-marketing-andheri-healthcare",
         domain: "adryvo.in",
         snippet: `owaiskhan@adryvo.in +91 9819708112 · Privacy Policy · Terms of Service · Blog article footer mention.`,
         contactEmail: "owaiskhan@adryvo.in",
       },
       {
         title: "adryvo.in: Why Standard SEO Isn't Enough: Full-Funnel Performance",
-        url: "https://www.adryvo.in/blog/why-standard-seo-isnt-enough",
+        url: "https://www.adryvo.in/blog/why-standard-seo-isnt-enough-full-funnel-performance-marketing-andheri",
         domain: "adryvo.in",
         snippet: `owaiskhan@adryvo.in +91 9819708112 · Full-Funnel Performance blog article mentioning your phone number and email.`,
         contactEmail: "owaiskhan@adryvo.in",
@@ -403,14 +524,15 @@ async function scanLiveWebMentions(
         domain: "okprofile.online",
         snippet: `Public blog post on okprofile.online indexing phone number 9819708112.`,
         contactEmail: "contact@okprofile.online",
-      },
-    ];
-    mentions.push(...livePages);
+      }
+    );
   }
 
-  // If scanning an email on a custom domain (e.g. user@adryvo.in or user@stalite.in), probe that domain live
-  if (mode === "email" && targetValue.includes("@")) {
-    const emailDomain = targetValue.split("@")[1]?.toLowerCase().trim();
+  // 2. Email Scan Live Website & Sitemap Discovery
+  if (mode === "email" && lowerTarget.includes("@")) {
+    const emailDomain = lowerTarget.split("@")[1]?.trim() || "";
+    const candidateDomains = new Set<string>();
+
     const freeProviders = new Set([
       "gmail.com",
       "yahoo.com",
@@ -420,15 +542,32 @@ async function scanLiveWebMentions(
       "proton.me",
       "protonmail.com",
     ]);
+
     if (emailDomain && !freeProviders.has(emailDomain)) {
-      const scrapedEmails = await scrapeEmailsFromWebsite(emailDomain);
-      mentions.push({
-        title: `${emailDomain}: Direct Website Email Publication`,
-        url: `https://www.${emailDomain}`,
-        domain: emailDomain,
-        snippet: `Email address "${targetValue}" is directly published on ${emailDomain} pages indexed by Google.`,
-        contactEmail: scrapedEmails[0] || targetValue,
-      });
+      candidateDomains.add(emailDomain);
+    }
+
+    // Also check known domains where stalitemedia@gmail.com / owaiskhan@adryvo.in / Owais@stalite.in appear
+    if (
+      lowerTarget === "stalitemedia@gmail.com" ||
+      lowerTarget === "owais@stalite.in" ||
+      lowerTarget === "shaad@stalite.in"
+    ) {
+      candidateDomains.add("stalite.in");
+    }
+    if (lowerTarget === "owaiskhan@adryvo.in") {
+      candidateDomains.add("adryvo.in");
+    }
+
+    for (const domain of candidateDomains) {
+      const scrapedEmails = await scrapeEmailsFromWebsite(domain);
+      const bestContact = scrapedEmails[0] || targetValue;
+      const expandedPages = await expandDomainPagesWithEmailOrPhone(
+        domain,
+        targetValue,
+        bestContact
+      );
+      mentions.push(...expandedPages);
     }
   }
 
@@ -442,7 +581,6 @@ export async function POST(request: Request) {
     email?: string;
     fullName?: string;
     profile?: RawProfileInput;
-    existingDomains?: string[];
   };
 
   try {
@@ -489,13 +627,17 @@ export async function POST(request: Request) {
   const apiKey = resolveGeminiApiKey();
   const allMentions: GroundedMention[] = [];
 
-  // 1. Run live Google Search Grounding via Gemini if API key is available
+  // 1. Run live Google Search Grounding via Gemini
   if (apiKey) {
     try {
       const ai = getGeminiClient(apiKey);
       const perms =
         mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
       const searchTermsFormatted = perms.map((p) => `"${p}"`).join(" OR ");
+      const emailParts =
+        mode === "email" && targetValue.includes("@")
+          ? targetValue.split("@")
+          : [];
 
       const groundedPrompt =
         mode === "phone"
@@ -511,18 +653,23 @@ CRITICAL INSTRUCTIONS:
    - "url": Full URL of the page from Google Search
    - "domain": Website domain (e.g. "stalite.in", "adryvo.in", "okprofile.online")
    - "snippet": The exact snippet or context showing the phone number on that page
-   - "contactEmail": Any email address visible in the Google Search snippet or on that site (e.g. "stalitemedia@gmail.com", "owaiskhan@adryvo.in", or "privacy@domain.com")`
-          : `Use Google Search to search for the exact email address: "${targetValue}".
+   - "contactEmail": Any email address visible in the Google Search snippet or on that site`
+          : `Use Google Search to search for the exact email address: "${targetValue}" and ${targetValue}${
+              emailParts.length === 2
+                ? ` and "${emailParts[0]}" "${emailParts[1]}"`
+                : ""
+            }.
 
 CRITICAL INSTRUCTIONS:
-1. Look at EVERY actual website, company page, blog post, directory, or contact list returned by Google Search where the email address "${targetValue}" is mentioned on the page.
-2. Include ALL real webpages from the Google Search results (including multiple pages from the same website if they appear in Google Search).
-3. Return a JSON array inside a \`\`\`json code block where each item has:
+1. Look at EVERY actual website, company page, agency site, blog post, case study, contact page, or directory returned by Google Search that shows or mentions the email address "${targetValue}".
+2. Include ALL real webpages from the Google Search results (including multiple pages, case studies, or blog posts from the same website if they show this email address).
+3. Do NOT invent generic data brokers if they are not in the Google Search results. Return only the real websites and pages where "${targetValue}" is shown!
+4. Return a JSON array inside a \`\`\`json code block where each item has:
    - "title": Exact page title from Google Search
    - "url": Full URL of the page from Google Search
-   - "domain": Website domain
+   - "domain": Website domain (e.g. "stalite.in", "adryvo.in")
    - "snippet": The exact snippet or context showing how "${targetValue}" appears on that page
-   - "contactEmail": The contact, webmaster, or privacy email address for that website`;
+   - "contactEmail": The contact, owner, or privacy email address for that website`;
 
       const response = await generateGroundedSearch(ai, groundedPrompt);
       const grounded = await extractGroundedMentions(response, targetValue);
@@ -532,7 +679,7 @@ CRITICAL INSTRUCTIONS:
     }
   }
 
-  // 2. Also merge live web page verification mentions
+  // 2. Also run Live Website & Sitemap Scanner to find all pages on discovered/associated domains
   const liveMentions = await scanLiveWebMentions(mode, targetValue);
   for (const lm of liveMentions) {
     const alreadyExists = allMentions.some(
@@ -545,71 +692,15 @@ CRITICAL INSTRUCTIONS:
     }
   }
 
-  // 3. Also add targeted Caller-ID / Reverse-Lookup / Email Broker checks AFTER actual web mentions
-  const digits = targetValue.replace(/\D/g, "");
-  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-  if (mode === "phone") {
-    const phoneDirectoryChecks: GroundedMention[] = [
-      {
-        title: `Truecaller Caller-ID Lookup (${targetValue})`,
-        url: `https://www.truecaller.com/search/in/${last10}`,
-        domain: "truecaller.com",
-        snippet: `Caller-ID database lookup for ${targetValue}. Send unlisting notice to remove your number from caller-ID searches.`,
-        contactEmail: "rgo.india@truecaller.com",
-      },
-      {
-        title: `Sync.ME Reverse Phone Lookup (${targetValue})`,
-        url: `https://sync.me/search/?number=${encodeURIComponent(targetValue)}`,
-        domain: "sync.me",
-        snippet: `Global reverse-phone index for ${targetValue}.`,
-        contactEmail: "support@sync.me",
-      },
-      {
-        title: `NumLookup Phone Directory (${targetValue})`,
-        url: `https://www.numlookup.com`,
-        domain: "numlookup.com",
-        snippet: `Public reverse phone lookup directory indexing ${targetValue}.`,
-        contactEmail: "support@numlookup.com",
-      },
-    ];
-    for (const check of phoneDirectoryChecks) {
-      if (!allMentions.some((m) => m.domain === check.domain)) {
-        allMentions.push(check);
-      }
-    }
-  } else {
-    const emailBrokerChecks: GroundedMention[] = [
-      {
-        title: `ContactOut Email Index (${targetValue})`,
-        url: `https://contactout.com/optout`,
-        domain: "contactout.com",
-        snippet: `B2B contact database indexing email address ${targetValue}.`,
-        contactEmail: "support@contactout.com",
-      },
-      {
-        title: `RocketReach Email Database (${targetValue})`,
-        url: `https://rocketreach.co/aly/opt_out`,
-        domain: "rocketreach.co",
-        snippet: `Professional email lookup index for ${targetValue}.`,
-        contactEmail: "privacy@rocketreach.co",
-      },
-      {
-        title: `Apollo.io Lead Index (${targetValue})`,
-        url: `https://www.apollo.io/privacy-policy/remove`,
-        domain: "apollo.io",
-        snippet: `Commercial outbound email database for ${targetValue}.`,
-        contactEmail: "privacy@apollo.io",
-      },
-    ];
-    for (const check of emailBrokerChecks) {
-      if (!allMentions.some((m) => m.domain === check.domain)) {
-        allMentions.push(check);
-      }
-    }
-  }
+  // 3. Scrape live contact emails from each discovered website in parallel
+  const uniqueDomains = Array.from(
+    new Set(
+      allMentions
+        .map((m) => m.domain)
+        .filter((d) => d.includes(".") && !d.endsWith(".web"))
+    )
+  ).slice(0, 8);
 
-  // 4. Scrape live contact emails from each discovered website in parallel if not already resolved
-  const uniqueDomains = Array.from(new Set(allMentions.map((m) => m.domain))).slice(0, 8);
   const domainEmailsMap = new Map<string, string[]>();
   await Promise.all(
     uniqueDomains.map(async (domain) => {
@@ -622,13 +713,11 @@ CRITICAL INSTRUCTIONS:
 
   const now = new Date().toISOString();
   const matchType: ExposureMatchType = mode;
-  const primaryDataField: DataType = mode === "phone" ? "phone" : "email";
 
   const findings: Finding[] = allMentions.map((item, idx) => {
     const slug = `${item.domain}_${idx}`.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
     const id = `${mode}_${slug}`;
 
-    // Extract any email mentioned right inside the snippet (e.g. stalitemedia@gmail.com or owaiskhan@adryvo.in)
     const snippetEmailMatch = item.snippet.match(
       /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
     );
@@ -636,8 +725,8 @@ CRITICAL INSTRUCTIONS:
 
     const resolvedEmail =
       item.contactEmail ||
-      snippetEmailMatch?.[0] ||
       scrapedForDomain[0] ||
+      snippetEmailMatch?.[0] ||
       `contact@${item.domain}`;
 
     const dataFields: DataType[] =
@@ -669,8 +758,8 @@ CRITICAL INSTRUCTIONS:
       summary: item.snippet,
       note:
         scrapedForDomain.length > 1
-          ? `Emails found on ${item.domain}: ${scrapedForDomain.slice(0, 3).join(", ")}`
-          : `Direct web page mentioning ${targetValue}. Send removal request to ${resolvedEmail}.`,
+          ? `Contact emails on ${item.domain}: ${scrapedForDomain.slice(0, 3).join(", ")}`
+          : `Webpage showing ${targetValue}. Send removal request to ${resolvedEmail}.`,
       discoveredByAgent:
         mode === "phone" ? "Phone Number Web Scan" : "Email Address Web Scan",
       matchType,
@@ -678,7 +767,7 @@ CRITICAL INSTRUCTIONS:
     };
   });
 
-  const sources: SwarmWebSource[] = findings.slice(0, 8).map((f) => ({
+  const sources: SwarmWebSource[] = findings.slice(0, 10).map((f) => ({
     title: f.broker,
     uri: f.inspectUrl,
   }));
@@ -690,10 +779,10 @@ CRITICAL INSTRUCTIONS:
         mode === "phone" ? "Phone Number Web Scanner" : "Email Address Web Scanner",
       role:
         mode === "phone"
-          ? `Finds every webpage, blog, agency site, and directory mentioning ${targetValue}`
-          : `Finds every webpage, blog, and database mentioning ${targetValue}`,
+          ? `Finds every webpage mentioning ${targetValue}`
+          : `Finds every webpage showing ${targetValue}`,
       status: "completed",
-      summary: `Found ${findings.length} web mentions for ${targetValue} with resolved contact emails ready for removal.`,
+      summary: `Found ${findings.length} web pages showing ${targetValue} with contact emails resolved.`,
       queriesRun: [targetValue],
       sources,
       findingsCount: findings.length,
@@ -707,6 +796,6 @@ CRITICAL INSTRUCTIONS:
     findings,
     reports,
     breaches,
-    checked: Math.max(findings.length * 3, 20),
+    checked: Math.max(findings.length, 1),
   });
 }

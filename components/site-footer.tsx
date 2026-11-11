@@ -8,7 +8,7 @@ const COLUMNS = [
     links: [
       { href: "/scan", label: "Start a scan" },
       { href: "/dashboard", label: "Your report" },
-      { href: "/dashboard?tab=swarm", label: "AI Agent Swarm" },
+      { href: "/dashboard?tab=swarm", label: "Phone & Email Scans" },
       { href: "/dashboard?tab=requests", label: "Removal requests" },
     ],
   },
@@ -16,7 +16,7 @@ const COLUMNS = [
     title: "Learn & Legal",
     links: [
       { href: "/#how", label: "How it works" },
-      { href: "/#coverage", label: "Covered sources" },
+      { href: "/#laws", label: "Legal rights" },
       { href: "/privacy", label: "Privacy Policy" },
       { href: "/terms", label: "Terms of Service" },
     ],
