@@ -68,9 +68,13 @@ accent) and generous space. No gradients anywhere. All text meets WCAG AA.
 
 ## License
 
-[GNU Affero General Public License v3.0 or later](LICENSE). This is deliberately
-strong: if you host a modified copy of Untrace, section 13 requires you to offer
-its source to the people using it. A privacy tool should not be able to go quiet.
+[GNU Affero General Public License v3.0 or later](LICENSE).
+
+Copyright (C) 2026 Owais Khan.
+
+This licence is deliberately strong. If you host a modified copy of Untrace,
+section 13 requires you to offer its source to the people using it. A privacy
+tool should not be able to go quiet.
 
 ## Disclaimer
 
