@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User Validator
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['id', 'email', 'createdAt'])
+        && data.keys().hasOnly(['id', 'email', 'displayName', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.id == userId
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 256
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128))
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 512))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // Scan Validator
+    function isValidScan(data, userId) {
+      return data.keys().hasAll(['id', 'userId', 'createdAt', 'checked'])
+        && data.keys().hasOnly(['id', 'userId', 'createdAt', 'checked', 'demo', 'profile', 'findings', 'breaches'])
+        && data.id is string && isValidId(data.id)
+        && data.userId == userId
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.checked is number && data.checked >= 0
+        && (!('demo' in data) || data.demo is bool)
+        && (!('profile' in data) || data.profile is map)
+        && (!('findings' in data) || (data.findings is list && data.findings.size() <= 500))
+        && (!('breaches' in data) || (data.breaches is list && data.breaches.size() <= 100));
+    }
+
+    // Removal Request Validator
+    function isValidRequest(data, userId) {
+      return data.keys().hasAll(['id', 'userId', 'findingId', 'brokerName', 'status', 'createdAt'])
+        && data.keys().hasOnly(['id', 'userId', 'findingId', 'brokerName', 'domain', 'category', 'contactEmail', 'subject', 'body', 'status', 'createdAt', 'sentAt', 'followUpAt', 'removalUrl', 'updatedAt'])
+        && data.id is string && isValidId(data.id)
+        && data.userId == userId
+        && data.findingId is string && data.findingId.size() <= 128
+        && data.brokerName is string && data.brokerName.size() <= 128
+        && (!('domain' in data) || (data.domain is string && data.domain.size() <= 128))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 64))
+        && (!('contactEmail' in data) || (data.contactEmail is string && data.contactEmail.size() <= 256))
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 256))
+        && (!('body' in data) || (data.body is string && data.body.size() <= 10000))
+        && data.status in ['drafted', 'sent', 'confirmed', 'removed', 'refused']
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && (!('sentAt' in data) || (data.sentAt is string && data.sentAt.size() <= 64))
+        && (!('followUpAt' in data) || (data.followUpAt is string && data.followUpAt.size() <= 64))
+        && (!('removalUrl' in data) || (data.removalUrl is string && data.removalUrl.size() <= 512))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // User Profile Documents
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && isValidId(userId) && isVerified() && isValidUser(incoming(), userId);
+      allow update: if isOwner(userId) && isValidId(userId) && isVerified() && isValidUser(incoming(), userId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt', 'email']);
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Scans Subcollection
+      match /scans/{scanId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(scanId) && isVerified() && isValidScan(incoming(), userId);
+        allow update: if false; // Scans are immutable records
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(scanId);
+      }
+
+      // Removal Requests Subcollection
+      match /requests/{requestId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(requestId) && isVerified() && isValidRequest(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(requestId) && isVerified() && isValidRequest(incoming(), userId)
+          && incoming().id == existing().id
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'sentAt', 'followUpAt', 'subject', 'body', 'contactEmail', 'updatedAt']);
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(requestId);
+      }
+    }
+  }
+}

@@ -1,0 +1,187 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile record storing account details and preferences.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "The unique Firebase Auth UID."
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "The email address associated with the user account."
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "The display name of the user."
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "URL to the user's avatar image."
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Timestamp when the user document was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Timestamp when the user document was last updated."
+        }
+      },
+      "required": ["id", "email", "createdAt"]
+    },
+    "Scan": {
+      "title": "Scan",
+      "description": "Persisted scan result containing exposed listings and breach findings for the user.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique scan identifier."
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Owner user ID."
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "ISO timestamp when the scan was executed."
+        },
+        "checked": {
+          "type": "number",
+          "description": "Total number of data sources checked."
+        },
+        "demo": {
+          "type": "boolean",
+          "description": "Whether this scan was run with demo profile data."
+        },
+        "profile": {
+          "type": "object",
+          "description": "Profile search terms used for the scan."
+        },
+        "findings": {
+          "type": "array",
+          "description": "List of discovered data broker listings."
+        },
+        "breaches": {
+          "type": "array",
+          "description": "List of discovered credential breach exposures."
+        }
+      },
+      "required": ["id", "userId", "createdAt", "checked"]
+    },
+    "RemovalRequest": {
+      "title": "RemovalRequest",
+      "description": "Opt-out deletion request sent to a data broker or tracking provider.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique removal request ID."
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Owner user ID."
+        },
+        "findingId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Associated finding ID from the scan."
+        },
+        "brokerName": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Name of the target data broker."
+        },
+        "domain": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Domain of the data broker."
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Broker category (e.g., people-search, marketing, adtech)."
+        },
+        "contactEmail": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Contact email used for the removal request."
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Subject line of the removal request email."
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 10000,
+          "description": "Full text of the legal removal request."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["drafted", "sent", "confirmed", "removed", "refused"],
+          "description": "Current status of the removal request."
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Creation timestamp."
+        },
+        "sentAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Timestamp when the request was sent by the user."
+        },
+        "followUpAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Target follow-up timestamp (usually 30 days post-send)."
+        },
+        "removalUrl": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Direct URL to broker's opt-out or suppression form."
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Last update timestamp."
+        }
+      },
+      "required": ["id", "userId", "findingId", "brokerName", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents stored by user ID."
+    },
+    "/users/{userId}/scans/{scanId}": {
+      "schema": "Scan",
+      "description": "User personal scan history and findings."
+    },
+    "/users/{userId}/requests/{requestId}": {
+      "schema": "RemovalRequest",
+      "description": "User deletion and suppression requests."
+    }
+  }
+}

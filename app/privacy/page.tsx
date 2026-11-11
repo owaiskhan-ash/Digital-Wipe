@@ -21,16 +21,17 @@ const SECTIONS = [
     ],
   },
   {
-    title: "What your browser keeps",
+    title: "What your browser keeps and optional cloud backup",
     body: [
-      "The report and your request history are saved in this browser's local storage under the key untrace.state.v1. That is what lets you close the tab and come back to the same list.",
-      "It also means the data lives on your device, not ours. “Delete” on the report page erases it, and clearing site data does the same thing. Nothing is synced, backed up or shared between browsers.",
+      "By default, your report and request history are saved in this browser's local storage under the key untrace.state.v1. You can freely use Untrace without creating an account.",
+      "If you choose to sign in with Google, your report and opt-out requests are encrypted and synchronized with Firebase Firestore under your private authenticated user ID. Only you can read or update your scans and deletion records.",
+      "“Delete” on the report page erases your local state, and signing out removes local session access.",
     ],
   },
   {
     title: "What we don't do",
     body: [
-      "No account, no tracking pixels, no advertising, no analytics scripts, no third-party fonts or CDNs. The fonts are self-hosted and the illustrations are served from the same origin as this page.",
+      "No tracking pixels, no advertising networks, no third-party behavioral profiling. Authentication uses Google's secure OAuth flow.",
       "We never send an email for you. A request leaves only when you press “Open in mail app” or paste it into a company's opt-out form, from your own mailbox.",
     ],
   },

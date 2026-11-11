@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Logo } from "./logo";
+import { AuthButton } from "./auth-button";
 
 const NAV = [
   { href: "/#how", label: "How it works" },
@@ -27,10 +28,11 @@ export function SiteHeader() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Link href="/privacy" className="hidden text-sm text-muted transition-colors hover:text-ink sm:block">
             Privacy
           </Link>
+          <AuthButton />
           <Link href="/scan" className="btn btn-primary btn-sm">
             Start a free scan
             <ArrowUpRight className="size-4" strokeWidth={1.8} aria-hidden />
@@ -40,3 +42,4 @@ export function SiteHeader() {
     </header>
   );
 }
+
