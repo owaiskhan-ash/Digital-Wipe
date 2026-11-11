@@ -276,17 +276,19 @@ function FindingRow({
               {finding.broker}
             </h3>
             <span className="text-xs text-muted">{finding.domain}</span>
-            <RiskBadge risk={finding.risk} className="ml-auto" />
-            {status ? (
-              <span
-                className={cn(
-                  "rounded-full border px-2 py-1 text-[0.6875rem] font-medium",
-                  REQUEST_CHIP[status].className,
-                )}
-              >
-                {REQUEST_CHIP[status].label}
-              </span>
-            ) : null}
+            <div className="ml-auto flex items-center gap-1.5">
+              {status ? (
+                <span
+                  className={cn(
+                    "rounded-full border px-2 py-1 text-[0.6875rem] font-medium",
+                    REQUEST_CHIP[status].className,
+                  )}
+                >
+                  {REQUEST_CHIP[status].label}
+                </span>
+              ) : null}
+              <RiskBadge risk={finding.risk} />
+            </div>
           </div>
 
           <p className="mt-2 max-w-2xl text-[0.8125rem] leading-relaxed text-muted">
