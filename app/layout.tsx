@@ -4,6 +4,7 @@ import "@fontsource/instrument-serif/400.css";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
 import { MobileShell } from "@/components/mobile-shell";
+import { ScrollReveal } from "@/components/scroll-reveal";
 import {
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -95,6 +96,7 @@ export default function RootLayout({
           <div className="pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
             {children}
           </div>
+          <ScrollReveal />
           <MobileShell />
         </StoreProvider>
       </body>

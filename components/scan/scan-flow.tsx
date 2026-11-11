@@ -236,7 +236,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         role="status"
         aria-live="polite"
       >
-        <div className="card p-5 md:p-9">
+        <div data-reveal className="card p-5 md:p-9">
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="inline-flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-[0.2em] text-moss-deep">
@@ -279,7 +279,11 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               const done = progress >= (index + 1) * 33.3;
               const active = index === stageIndex && !done;
               return (
-                <li key={stage.label} className="flex items-start gap-3">
+                <li
+                  key={stage.label}
+                  className="flex animate-fade-blur items-start gap-3"
+                  style={{ animationDelay: `${index * 60}ms` }}
+                >
                   <span
                     className={[
                       "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border",
@@ -316,7 +320,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         </div>
 
         <aside className="flex flex-col gap-5">
-          <div className="card flex-1 p-5 md:p-7">
+          <div data-reveal className="card flex-1 p-5 md:p-7">
             <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
               Current Step
             </p>
@@ -360,7 +364,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       onSubmit={submit}
       className="grid items-start gap-5 lg:grid-cols-[1.15fr_0.85fr]"
     >
-      <div className="card p-4 md:p-8">
+      <div data-reveal className="card p-4 md:p-8">
         {/* Bifurcated Mode Selector: Phone Number Scan vs Email Scan */}
         <div className="grid grid-cols-2 gap-2.5 rounded-2xl border border-line bg-mist/60 p-2">
           <button
@@ -505,7 +509,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       </div>
 
       <aside className="space-y-5">
-        <div className="card p-5 md:p-7">
+        <div data-reveal className="card p-5 md:p-7">
           <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
             Two Dedicated Scans
           </p>

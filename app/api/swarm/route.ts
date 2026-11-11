@@ -729,79 +729,11 @@ const googleCseProvider: SearchProvider = {
   },
 };
 
-const duckDuckGoProvider: SearchProvider = {
-  name: "DuckDuckGo",
-  isConfigured: () => true,
-  search: async (query, signal) => {
-    const res = await fetch(
-      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-      {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml",
-          "Accept-Language": "en-GB,en;q=0.9",
-        },
-        signal,
-        cache: "no-store",
-      }
-    );
-
-    if (res.status === 202 || res.status === 429) {
-      throw new Error(
-        "DuckDuckGo blocked the request with a challenge page. Set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY for a search provider that allows server traffic."
-      );
-    }
-    if (!res.ok) {
-      throw new Error(`DuckDuckGo returned ${res.status}`);
-    }
-
-    const html = await res.text();
-    if (/anomaly|unusual traffic|captcha/i.test(html) && !html.includes("result__a")) {
-      throw new Error(
-        "DuckDuckGo returned a challenge page instead of results. Set a search provider key to search from the server."
-      );
-    }
-
-    const anchors = [
-      ...html.matchAll(
-        /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
-      ),
-    ];
-    const snippets = [
-      ...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g),
-    ];
-
-    const hits: ProviderHit[] = [];
-    for (let index = 0; index < anchors.length; index++) {
-      let url = anchors[index][1];
-      const uddg = url.match(/uddg=([^&]+)/);
-      if (uddg) {
-        try {
-          url = decodeURIComponent(uddg[1]);
-        } catch {
-          // keep the raw href
-        }
-      }
-      if (!url.startsWith("http")) continue;
-      hits.push({
-        title: decodeHtmlEntities(anchors[index][2].replace(/<[^>]+>/g, "").trim()),
-        url,
-        snippet: decodeHtmlEntities(
-          (snippets[index] ? snippets[index][1].replace(/<[^>]+>/g, "") : "").trim()
-        ),
-      });
-    }
-    return hits;
-  },
-};
-
 const SEARCH_PROVIDERS: SearchProvider[] = [
   braveProvider,
   serperProvider,
   tavilyProvider,
   googleCseProvider,
-  duckDuckGoProvider,
 ];
 
 function remainingMs(deadline: number): number {
@@ -945,18 +877,14 @@ export async function GET(request: Request) {
   const apiKey = resolveGeminiApiKey();
   const providers = providerStatus();
   const keyedProviders = Object.entries(providers)
-    .filter(([name, ready]) => ready && name !== "DuckDuckGo")
+    .filter(([, ready]) => ready)
     .map(([name]) => name);
 
   const base = {
     status: "ok",
     scanEngineReady: Boolean(apiKey),
     geminiActive: null as boolean | null,
-    engine: [
-      apiKey ? "Gemini Search Grounding" : null,
-      ...keyedProviders,
-      "DuckDuckGo",
-    ]
+    engine: [apiKey ? "Gemini Search Grounding" : null, ...keyedProviders]
       .filter(Boolean)
       .join(" + "),
     detectedKeyVariables: [
@@ -974,7 +902,7 @@ export async function GET(request: Request) {
       : "Configure GEMINI_API_KEY in Settings > Secrets.",
     fallbackNote:
       keyedProviders.length === 0
-        ? "DuckDuckGo is available as public fallback. For guaranteed server search from cloud IPs, set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY."
+        ? "Server-side search needs a key. Set BRAVE_SEARCH_API_KEY, SERPER_API_KEY, TAVILY_API_KEY or GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX; scans still run on Gemini grounding without one."
         : null,
   };
 
@@ -1006,12 +934,9 @@ export async function GET(request: Request) {
   const sample = params.get("sample")?.trim() || "";
   const sampleMode: "phone" | "email" =
     params.get("mode") === "email" ? "email" : "phone";
-  // ?ddg=1 exercises the keyless open web provider on its own, which answers
-  // in a second or two when it works and fails fast when the host is blocked.
-  const wantsDdg = params.get("ddg") === "1";
   // ?only=1 runs the sample search on its own, so the timing it reports is the
   // search's rather than the search plus two probes.
-  const sampleOnly = (params.get("only") === "1" && Boolean(sample)) || wantsDdg;
+  const sampleOnly = params.get("only") === "1" && Boolean(sample);
 
   try {
     const selftestDeadline = Date.now() + 50_000;
@@ -1046,35 +971,6 @@ export async function GET(request: Request) {
           ok: false,
           error: describeSearchError(err),
           raw: errorText(err).slice(0, 500),
-        };
-      }
-    }
-
-    let webprobe: Record<string, unknown> | null = null;
-    if (wantsDdg) {
-      const webStartedAt = Date.now();
-      try {
-        const hits = await duckDuckGoProvider.search(
-          sample || "untrace privacy",
-          AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
-        );
-        webprobe = {
-          ok: true,
-          elapsedMs: Date.now() - webStartedAt,
-          hits: hits.length,
-          hosts: hits.slice(0, 3).map((hit) => {
-            try {
-              return new URL(hit.url).hostname;
-            } catch {
-              return hit.url.slice(0, 60);
-            }
-          }),
-        };
-      } catch (err) {
-        webprobe = {
-          ok: false,
-          elapsedMs: Date.now() - webStartedAt,
-          error: errorText(err).slice(0, 300),
         };
       }
     }
@@ -1126,7 +1022,6 @@ export async function GET(request: Request) {
           endpoint: probe.endpoint,
           latencyMs: Date.now() - startedAt,
           grounding,
-          ...(webprobe ? { webprobe } : {}),
           ...(dryrun ? { dryrun } : {}),
         },
       },
