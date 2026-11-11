@@ -105,8 +105,17 @@ function resolveGeminiApiKey(): string | undefined {
     process.env.GOOGLE_API_KEY,
     process.env.GOOGLE_GENAI_API_KEY,
     process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    process.env.GEMINI_KEY,
+    process.env.GEMINI_TOKEN,
+    process.env.GEMINI_SECRET,
+    process.env.GEMINI,
+    process.env.GOOGLE_AI_KEY,
+    process.env.GOOGLE_AI_API_KEY,
+    process.env.GENAI_API_KEY,
     process.env.NEXT_PUBLIC_GEMINI_API_KEY,
     process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
+    process.env.NEXT_PUBLIC_GEMINI_KEY,
+    process.env.NEXT_PUBLIC_API_KEY,
     process.env.API_KEY,
   ];
 
@@ -135,6 +144,40 @@ function resolveGeminiApiKey(): string | undefined {
   }
 
   return undefined;
+}
+
+export async function GET() {
+  const apiKey = resolveGeminiApiKey();
+  const directKeys = [
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENAI_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "GEMINI_KEY",
+    "GEMINI_TOKEN",
+    "GEMINI_SECRET",
+    "GEMINI",
+    "GOOGLE_AI_KEY",
+    "GOOGLE_AI_API_KEY",
+    "GENAI_API_KEY",
+    "NEXT_PUBLIC_GEMINI_API_KEY",
+    "NEXT_PUBLIC_GOOGLE_API_KEY",
+    "API_KEY",
+  ];
+  const detectedKeys = directKeys.filter((k) => {
+    const val = process.env[k];
+    return typeof val === "string" && val.trim().length > 0;
+  });
+
+  return NextResponse.json({
+    status: "ok",
+    scanEngineReady: Boolean(apiKey),
+    detectedKeyVariables: detectedKeys,
+    keyMasked: apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : null,
+    instruction: !apiKey
+      ? "Add GEMINI_API_KEY in Vercel (Project Settings -> Environment Variables, check Production, Preview, Development), then click Deployments -> Redeploy."
+      : "Scan engine configured and ready.",
+  });
 }
 
 function getGeminiClient(apiKey: string) {
@@ -744,7 +787,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "The scan engine is not configured on the server (missing GEMINI_API_KEY), so nothing was checked.",
+          "The scan engine is not configured on the server (missing GEMINI_API_KEY). In Vercel, go to Project Settings -> Environment Variables, add GEMINI_API_KEY (ensure 'Production' is checked), then go to Deployments and click Redeploy.",
       },
       { status: 503 }
     );
@@ -799,9 +842,20 @@ CRITICAL INSTRUCTIONS:
     const response = await generateGroundedSearch(ai, groundedPrompt);
     const grounded = await extractGroundedMentions(response, targetValue);
     allMentions.push(...grounded);
-  } catch (err) {
-    searchError =
-      err instanceof Error ? err.message : "The grounded search did not finish.";
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (/API_KEY_INVALID|API key not valid/i.test(errMsg)) {
+      searchError =
+        "The server's GEMINI_API_KEY is invalid. Please check that you copied the complete API key from Google AI Studio.";
+    } else if (/PERMISSION_DENIED|API_KEY_SERVICE_BLOCKED/i.test(errMsg)) {
+      searchError =
+        "This API key is blocked or missing Generative Language API permissions in Google Cloud. Please create a key in Google AI Studio.";
+    } else if (/RESOURCE_EXHAUSTED|quota/i.test(errMsg)) {
+      searchError =
+        "Gemini API quota exceeded for this key. Please check your quota or billing.";
+    } else {
+      searchError = errMsg || "The grounded search did not finish.";
+    }
     console.error("Live Google Search grounding failed:", err);
   }
 
