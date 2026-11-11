@@ -358,7 +358,7 @@ export function runScan(rawProfile: RawProfileInput): ScanResult {
     checked: BROKERS.length,
     findings,
     breaches: buildBreaches(profile, seed),
-    demo: true,
+    demo: false,
   };
 }
 

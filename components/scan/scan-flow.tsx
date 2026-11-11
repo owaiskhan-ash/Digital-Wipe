@@ -14,7 +14,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { BROKERS } from "@/lib/brokers";
-import { SAMPLE_PROFILE } from "@/lib/sample";
 import { useStore } from "@/lib/store";
 import type { ScanResult } from "@/lib/types";
 
@@ -139,20 +138,6 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       setStatus("error");
       setError(cause instanceof Error ? cause.message : "Something interrupted the scan.");
     }
-  };
-
-  const loadExample = () => {
-    setForm({
-      fullName: SAMPLE_PROFILE.fullName,
-      city: SAMPLE_PROFILE.city,
-      region: SAMPLE_PROFILE.region,
-      country: SAMPLE_PROFILE.country,
-      emails: SAMPLE_PROFILE.emails.join(", "),
-      phones: SAMPLE_PROFILE.phones.join(", "),
-      usernames: SAMPLE_PROFILE.usernames.map((name) => `@${name}`).join(", "),
-    });
-    setAgreed(true);
-    setError("");
   };
 
   if (status === "running") {
@@ -284,7 +269,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               className="field"
               value={form.fullName}
               onChange={(event) => update("fullName")(event.target.value)}
-              placeholder="Maya Kapoor"
+              placeholder="e.g. John Smith"
               autoComplete="name"
               required
             />
@@ -432,9 +417,6 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           <button type="submit" className="btn btn-primary" disabled={!agreed}>
             Run the scan
             <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
-          </button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={loadExample}>
-            Fill an example
           </button>
           <span className="text-xs text-muted sm:ml-auto">About 5 seconds</span>
         </div>

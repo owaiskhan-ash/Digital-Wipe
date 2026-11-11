@@ -34,6 +34,7 @@ import {
   db,
   handleFirestoreError,
   OperationType,
+  setCachedAccessToken,
   signInWithGoogle,
   signOutUser,
   testConnection,
@@ -112,7 +113,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setUser(currentUser);
       setAuthLoading(false);
 
-      if (currentUser) {
+      if (!currentUser) {
+        setCachedAccessToken(null);
+      } else {
         setIsSyncing(true);
         const userDocPath = `users/${currentUser.uid}`;
         try {

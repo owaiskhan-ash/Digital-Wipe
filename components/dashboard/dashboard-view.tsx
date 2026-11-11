@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { runScan } from "@/lib/scan";
-import { SAMPLE_PROFILE } from "@/lib/sample";
 import { CATEGORIES, DATA_LABELS } from "@/lib/types";
 import { cn, downloadFile, formatDate, plural, toCsv } from "@/lib/utils";
 import { EmptyState, SectionLabel, StatCard } from "@/components/ui";
@@ -31,15 +30,11 @@ export function DashboardView() {
   const [seeds, setSeeds] = useState<ComposerSeed[] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // "See an example report" lands here with ?sample=1 and no saved scan.
+  // Tab selection via URL
   useEffect(() => {
     if (!hydrated) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("sample") === "1" && !scan) {
-      saveScan(runScan(SAMPLE_PROFILE));
-    }
     if (params.get("tab") === "requests") setTab("requests");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
   useEffect(() => {
@@ -68,10 +63,6 @@ export function DashboardView() {
       ) as Record<string, (typeof requests)[number]["status"]>,
     [requests],
   );
-
-  const isSample =
-    scan?.profile.fullName === SAMPLE_PROFILE.fullName &&
-    scan?.profile.city === SAMPLE_PROFILE.city;
 
   const exportReport = () => {
     if (!scan) return;
@@ -143,13 +134,15 @@ export function DashboardView() {
               Start a scan
               <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
             </Link>
-            <button
-              type="button"
-              onClick={() => saveScan(runScan(SAMPLE_PROFILE))}
-              className="btn btn-secondary"
-            >
-              See an example report
-            </button>
+            {!user ? (
+              <button
+                type="button"
+                onClick={() => signIn()}
+                className="btn btn-secondary"
+              >
+                Sign in with Google
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -197,13 +190,6 @@ export function DashboardView() {
               <span>{plural(scan.checked, "source")} checked</span>
               <span aria-hidden>·</span>
               <span>{formatDate(scan.createdAt)}</span>
-              <span
-                className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-[0.6875rem]"
-                title="This prototype uses a curated directory of real opt-out pages and illustrative results."
-              >
-                <Info className="size-3 text-muted" strokeWidth={1.9} aria-hidden />
-                Prototype data
-              </span>
             </div>
           </div>
 
@@ -271,22 +257,6 @@ export function DashboardView() {
             <span className="text-[0.6875rem] font-medium text-moss">Cloud backup active</span>
           </div>
         )}
-
-        {isSample ? (
-          <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-moss-soft/60 px-4 py-3">
-            <Info className="size-4 shrink-0 text-moss" strokeWidth={1.8} aria-hidden />
-            <p className="text-xs leading-relaxed text-moss-deep">
-              This is an example report for a fictional person, so you can see the
-              whole flow.
-            </p>
-            <Link
-              href="/scan"
-              className="btn btn-secondary btn-xs ml-auto"
-            >
-              Run your own scan
-            </Link>
-          </div>
-        ) : null}
 
         {/* Stats */}
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

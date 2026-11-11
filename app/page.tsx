@@ -21,7 +21,6 @@ import { CategoryIcon, SectionLabel } from "@/components/ui";
 import { BROKERS } from "@/lib/brokers";
 import { BREACH_COUNT } from "@/lib/breaches";
 import { runScan } from "@/lib/scan";
-import { SAMPLE_PROFILE } from "@/lib/sample";
 import { buildRemovalEmail } from "@/lib/removal";
 import { CATEGORIES, type Category } from "@/lib/types";
 import {
@@ -172,12 +171,23 @@ const STRUCTURED_DATA = {
   ],
 };
 
-const sampleFinding = runScan(SAMPLE_PROFILE);
-const sampleRequest = (() => {
-  const finding = sampleFinding.findings.find((item) => item.contactEmail) ?? sampleFinding.findings[0];
-  const email = buildRemovalEmail({ profile: SAMPLE_PROFILE, finding });
-  return { finding, email };
-})();
+const PREVIEW_EMAIL = {
+  contactEmail: "privacy-requests@spokeo.com",
+  subject: "Request to delete personal data and opt out of sale (CCPA / GDPR)",
+  body: `To the Privacy & Compliance Team,
+
+I am writing to formally request the permanent deletion and suppression of all personal information concerning me held across your directory.
+
+Details to identify and suppress:
+- Full Legal Name: [Your Name]
+- Location: [Your City, Region]
+- Associated Email: [Your Email]
+
+Legal Basis:
+Under applicable privacy legislation (including CCPA / GDPR), I hereby exercise my right to erasure and request that you cease selling, licensing, or publishing my personal records.
+
+Please confirm suppression within the statutory response window.`,
+};
 
 export default function HomePage() {
   return (
@@ -205,8 +215,7 @@ export default function HomePage() {
               <p className="mt-7 max-w-xl text-[1.0625rem] leading-[1.7] text-ink-soft">
                 Untrace finds every listing that holds your name, street and
                 phone number, then writes the deletion request that takes you
-                off each one. You send the emails. Nothing leaves your browser
-                until you do.
+                off each one. Send directly via Gmail or your mail app.
               </p>
 
               <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -214,8 +223,8 @@ export default function HomePage() {
                   Start a free scan
                   <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
                 </Link>
-                <Link href="/dashboard?sample=1" className="btn btn-secondary">
-                  See an example report
+                <Link href="/dashboard" className="btn btn-secondary">
+                  View report
                 </Link>
               </div>
 
@@ -400,27 +409,26 @@ export default function HomePage() {
               <dl className="space-y-1.5 border-b border-line px-5 py-4 text-[0.75rem]">
                 <div className="flex gap-2">
                   <dt className="w-14 shrink-0 text-muted">To</dt>
-                  <dd className="text-ink-soft">{sampleRequest.finding.contactEmail}</dd>
+                  <dd className="text-ink-soft">{PREVIEW_EMAIL.contactEmail}</dd>
                 </div>
                 <div className="flex gap-2">
                   <dt className="w-14 shrink-0 text-muted">Subject</dt>
-                  <dd className="line-clamp-1 text-ink-soft">{sampleRequest.email.subject}</dd>
+                  <dd className="line-clamp-1 text-ink-soft">{PREVIEW_EMAIL.subject}</dd>
                 </div>
               </dl>
 
               <div className="max-h-[22rem] overflow-hidden px-5 py-5 text-[0.78rem] leading-[1.75] text-ink-soft">
                 <p className="whitespace-pre-line">
-                  {sampleRequest.email.body.split("\n").slice(0, 16).join("\n")}
+                  {PREVIEW_EMAIL.body}
                 </p>
-                <p className="mt-3 text-muted">…</p>
               </div>
 
               <div className="flex items-center justify-between gap-3 border-t border-line bg-mist/50 px-5 py-3.5">
                 <span className="flex items-center gap-1.5 text-[0.6875rem] text-muted">
                   <ShieldCheck className="size-3.5 text-moss" strokeWidth={1.7} aria-hidden />
-                  Cites {SAMPLE_PROFILE.country} law · 45-day deadline
+                  Cites statutory privacy law · 45-day deadline
                 </span>
-                <span className="text-[0.6875rem] text-muted">Copy · Email · Track</span>
+                <span className="text-[0.6875rem] text-muted">Gmail API · Email · Track</span>
               </div>
             </div>
           </div>

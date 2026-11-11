@@ -225,6 +225,17 @@ export function RequestsPanel({
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3.5">
+                {request.contactEmail && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit({ finding, request })}
+                    className="btn btn-primary btn-xs flex items-center gap-1.5 bg-[#1a73e8] hover:bg-[#1557b0] text-white"
+                    title="Review and send via Gmail"
+                  >
+                    <Mail className="size-3" strokeWidth={1.8} aria-hidden />
+                    Send via Gmail
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => onEdit({ finding, request })}
