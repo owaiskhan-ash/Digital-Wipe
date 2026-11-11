@@ -24,6 +24,7 @@ import type { ComposerSeed } from "./composer";
 export function SwarmPanel({
   profile,
   findings,
+  swarmReports,
   statuses,
   initialMode = "phone",
   onMergeSwarmResults,
@@ -79,11 +80,11 @@ export function SwarmPanel({
     const cleanEmail = emailInput.trim();
 
     if (modeToRun === "phone" && cleanPhone.replace(/\D/g, "").length < 7) {
-      setError("Please enter a valid phone number (e.g. 9819708112).");
+      setError("Please enter a valid phone number (at least 7 digits).");
       return;
     }
     if (modeToRun === "email" && !/\S+@\S+\.\S+/.test(cleanEmail)) {
-      setError("Please enter a valid email address (e.g. you@example.com).");
+      setError("Please enter a valid email address.");
       return;
     }
 
@@ -240,7 +241,7 @@ export function SwarmPanel({
                     type="tel"
                     value={phoneInput}
                     onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="Enter phone number (e.g. 9819708112 or +91 9819708112)"
+                    placeholder="Enter phone number to scan"
                     className="field bg-surface pl-10 font-mono text-sm"
                     disabled={running}
                   />
@@ -255,7 +256,7 @@ export function SwarmPanel({
                     type="email"
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
-                    placeholder="Enter email address (e.g. you@example.com)"
+                    placeholder="Enter email address to scan"
                     className="field bg-surface pl-10 font-mono text-sm"
                     disabled={running}
                   />
@@ -286,6 +287,16 @@ export function SwarmPanel({
             <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-clay/30 bg-clay-soft px-4 py-3 text-xs text-clay">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {!error && swarmReports?.some((r) => r.status === "error") && (
+            <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber/30 bg-amber-soft px-4 py-3 text-xs text-amber">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              <span>
+                {swarmReports.find((r) => r.status === "error")?.summary ||
+                  "The last web search did not complete cleanly. Run the scan again to verify all sources."}
+              </span>
             </div>
           )}
         </div>
@@ -374,13 +385,20 @@ export function SwarmPanel({
                       </p>
 
                       <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
-                        <span className="inline-flex items-center gap-1.5 font-medium text-ink">
-                          <Mail className="size-3.5 text-moss" />
-                          Send Removal Email To:{" "}
-                          <span className="rounded bg-moss-soft px-2 py-0.5 font-mono text-moss-deep">
-                            {finding.contactEmail || `contact@${finding.domain}`}
+                        {finding.contactEmail ? (
+                          <span className="inline-flex items-center gap-1.5 font-medium text-ink">
+                            <Mail className="size-3.5 text-moss" />
+                            Send Removal Email To:{" "}
+                            <span className="rounded bg-moss-soft px-2 py-0.5 font-mono text-moss-deep">
+                              {finding.contactEmail}
+                            </span>
                           </span>
-                        </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-muted">
+                            <Mail className="size-3.5 text-muted" />
+                            No public email scraped on page — add recipient in composer or use site contact page
+                          </span>
+                        )}
                         {finding.note && (
                           <span className="text-[0.7rem] text-muted">
                             {finding.note}

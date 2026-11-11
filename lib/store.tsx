@@ -8,20 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-} from "firebase/firestore";
+import type { User } from "firebase/auth";
 import type {
   RemovalRequest,
   RequestStatus,
@@ -29,18 +16,9 @@ import type {
   StoredState,
 } from "./types";
 import { addDays } from "./utils";
-import {
-  auth,
-  db,
-  handleFirestoreError,
-  OperationType,
-  setCachedAccessToken,
-  signInWithGoogle,
-  signOutUser,
-  testConnection,
-} from "./firebase";
 
 const STORAGE_KEY = "untrace.state.v1";
+const AUTH_ACTIVE_KEY = "untrace.auth.active";
 const EMPTY: StoredState = { scan: null, requests: [], version: 1 };
 
 type StoreValue = {
@@ -84,17 +62,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<StoredState>(EMPTY);
   const [hydrated, setHydrated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [firebaseEnabled, setFirebaseEnabled] = useState(false);
 
-  // Initial local state hydration
+  // Initial local state hydration — only load Firebase SDK if user previously signed in
   useEffect(() => {
     setState(readLocal());
     setHydrated(true);
-    testConnection().catch((err) => {
-      console.warn("Firestore connection check:", err);
-    });
+    try {
+      if (window.localStorage.getItem(AUTH_ACTIVE_KEY) === "1") {
+        setAuthLoading(true);
+        setFirebaseEnabled(true);
+      }
+    } catch {
+      /* storage blocked */
+    }
   }, []);
 
   // Save to local storage for offline / quick reload fallback
@@ -107,129 +91,194 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, hydrated]);
 
-  // Auth state listener
+  // Lazy-loaded Firebase Auth & Firestore listener (only runs when firebaseEnabled is true)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
+    if (!firebaseEnabled) return;
 
-      if (!currentUser) {
-        setCachedAccessToken(null);
-      } else {
-        setIsSyncing(true);
-        const userDocPath = `users/${currentUser.uid}`;
-        try {
-          // Sync or create user profile
-          const userRef = doc(db, "users", currentUser.uid);
-          let existingData: Record<string, unknown> | null = null;
-          try {
-            const snap = await getDoc(userRef);
-            if (snap.exists()) {
-              existingData = snap.data();
-            }
-          } catch (err) {
-            handleFirestoreError(err, OperationType.GET, userDocPath);
-          }
+    let unsubscribeAuth: (() => void) | undefined;
+    let unsubscribeRequests: (() => void) | undefined;
+    let cancelled = false;
 
-          const now = new Date().toISOString();
-          const profilePayload = {
-            id: currentUser.uid,
-            email: currentUser.email || "",
-            displayName: (currentUser.displayName || "Untrace User").slice(0, 128),
-            photoURL: (currentUser.photoURL || "").slice(0, 512),
-            createdAt: (existingData?.createdAt as string) || now,
-            updatedAt: now,
-          };
+    (async () => {
+      try {
+        const [
+          { onAuthStateChanged },
+          {
+            collection,
+            doc,
+            getDoc,
+            getDocs,
+            limit,
+            onSnapshot,
+            orderBy,
+            query,
+            setDoc,
+          },
+          fb,
+        ] = await Promise.all([
+          import("firebase/auth"),
+          import("firebase/firestore"),
+          import("./firebase"),
+        ]);
 
-          try {
-            await setDoc(userRef, profilePayload, { merge: true });
-          } catch (err) {
-            handleFirestoreError(err, OperationType.WRITE, userDocPath);
-          }
+        if (cancelled) return;
 
-          // Fetch the most recent scan from Firestore if local state is empty
-          const scansColPath = `users/${currentUser.uid}/scans`;
-          try {
-            const scansQuery = query(
-              collection(db, "users", currentUser.uid, "scans"),
-              orderBy("createdAt", "desc"),
-              limit(1)
-            );
-            const scanSnaps = await getDocs(scansQuery);
-            if (!scanSnaps.empty) {
-              const remoteScan = scanSnaps.docs[0].data() as ScanResult;
-              setState((prev) => ({
-                ...prev,
-                scan: remoteScan,
-              }));
-            } else if (state.scan) {
-              // Upload current local scan to user's Firestore scans collection
-              const newScanRef = doc(db, "users", currentUser.uid, "scans", state.scan.id);
-              await setDoc(newScanRef, {
-                id: state.scan.id,
-                userId: currentUser.uid,
-                createdAt: state.scan.createdAt,
-                checked: state.scan.checked,
-                demo: Boolean(state.scan.demo),
-                profile: state.scan.profile,
-                findings: state.scan.findings,
-                breaches: state.scan.breaches,
-                ...(state.scan.swarmReports ? { swarmReports: state.scan.swarmReports } : {}),
-              });
-            }
-          } catch (err) {
-            console.warn("Scan cloud sync notice:", err);
-          }
-        } catch (err) {
-          console.error("User initialization error:", err);
-        } finally {
-          setIsSyncing(false);
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [hydrated]);
-
-  // Firestore real-time listener for removal requests when logged in
-  useEffect(() => {
-    if (!user) return;
-
-    const reqsPath = `users/${user.uid}/requests`;
-    const q = query(
-      collection(db, "users", user.uid, "requests"),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const cloudRequests: RemovalRequest[] = [];
-        snapshot.forEach((docItem) => {
-          cloudRequests.push(docItem.data() as RemovalRequest);
+        fb.testConnection().catch((err) => {
+          console.warn("Firestore connection check:", err);
         });
 
-        setState((prev) => ({
-          ...prev,
-          requests: cloudRequests,
-        }));
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, reqsPath);
+        unsubscribeAuth = onAuthStateChanged(fb.auth, async (currentUser) => {
+          if (cancelled) return;
+          setUser(currentUser);
+          setAuthLoading(false);
+
+          if (unsubscribeRequests) {
+            unsubscribeRequests();
+            unsubscribeRequests = undefined;
+          }
+
+          if (!currentUser) {
+            fb.setCachedAccessToken(null);
+            try {
+              window.localStorage.removeItem(AUTH_ACTIVE_KEY);
+            } catch {
+              /* ignore */
+            }
+          } else {
+            try {
+              window.localStorage.setItem(AUTH_ACTIVE_KEY, "1");
+            } catch {
+              /* ignore */
+            }
+
+            setIsSyncing(true);
+            const userDocPath = `users/${currentUser.uid}`;
+            try {
+              const userRef = doc(fb.db, "users", currentUser.uid);
+              let existingData: Record<string, unknown> | null = null;
+              try {
+                const snap = await getDoc(userRef);
+                if (snap.exists()) {
+                  existingData = snap.data();
+                }
+              } catch (err) {
+                fb.handleFirestoreError(err, fb.OperationType.GET, userDocPath);
+              }
+
+              const now = new Date().toISOString();
+              const profilePayload = {
+                id: currentUser.uid,
+                email: currentUser.email || "",
+                displayName: (currentUser.displayName || "Untrace User").slice(0, 128),
+                photoURL: (currentUser.photoURL || "").slice(0, 512),
+                createdAt: (existingData?.createdAt as string) || now,
+                updatedAt: now,
+              };
+
+              try {
+                await setDoc(userRef, profilePayload, { merge: true });
+              } catch (err) {
+                fb.handleFirestoreError(err, fb.OperationType.WRITE, userDocPath);
+              }
+
+              try {
+                const scansQuery = query(
+                  collection(fb.db, "users", currentUser.uid, "scans"),
+                  orderBy("createdAt", "desc"),
+                  limit(1)
+                );
+                const scanSnaps = await getDocs(scansQuery);
+                if (!scanSnaps.empty) {
+                  const remoteScan = scanSnaps.docs[0].data() as ScanResult;
+                  setState((prev) => ({
+                    ...prev,
+                    scan: remoteScan,
+                  }));
+                } else {
+                  const localCurrent = readLocal();
+                  if (localCurrent.scan) {
+                    const newScanRef = doc(
+                      fb.db,
+                      "users",
+                      currentUser.uid,
+                      "scans",
+                      localCurrent.scan.id
+                    );
+                    await setDoc(newScanRef, {
+                      id: localCurrent.scan.id,
+                      userId: currentUser.uid,
+                      createdAt: localCurrent.scan.createdAt,
+                      checked: localCurrent.scan.checked,
+                      demo: Boolean(localCurrent.scan.demo),
+                      profile: localCurrent.scan.profile,
+                      findings: localCurrent.scan.findings,
+                      breaches: localCurrent.scan.breaches,
+                      ...(localCurrent.scan.swarmReports
+                        ? { swarmReports: localCurrent.scan.swarmReports }
+                        : {}),
+                    });
+                  }
+                }
+              } catch (err) {
+                console.warn("Scan cloud sync notice:", err);
+              }
+            } catch (err) {
+              console.error("User initialization error:", err);
+            } finally {
+              if (!cancelled) setIsSyncing(false);
+            }
+
+            // Real-time listener for removal requests
+            const reqsPath = `users/${currentUser.uid}/requests`;
+            const q = query(
+              collection(fb.db, "users", currentUser.uid, "requests"),
+              orderBy("createdAt", "desc")
+            );
+            unsubscribeRequests = onSnapshot(
+              q,
+              (snapshot) => {
+                const cloudRequests: RemovalRequest[] = [];
+                snapshot.forEach((docItem) => {
+                  cloudRequests.push(docItem.data() as RemovalRequest);
+                });
+                setState((prev) => ({
+                  ...prev,
+                  requests: cloudRequests,
+                }));
+              },
+              (error) => {
+                fb.handleFirestoreError(error, fb.OperationType.GET, reqsPath);
+              }
+            );
+          }
+        });
+      } catch (err) {
+        console.error("Failed to load Firebase client:", err);
+        if (!cancelled) setAuthLoading(false);
       }
-    );
+    })();
 
-    return () => unsubscribe();
-  }, [user]);
+    return () => {
+      cancelled = true;
+      if (unsubscribeAuth) unsubscribeAuth();
+      if (unsubscribeRequests) unsubscribeRequests();
+    };
+  }, [firebaseEnabled]);
 
-  // One-click Google Login
+  // One-click Google Login (lazy-loads Firebase on demand)
   const signIn = useCallback(async () => {
     setAuthError(null);
+    setFirebaseEnabled(true);
     try {
-      await signInWithGoogle();
+      const fb = await import("./firebase");
+      await fb.signInWithGoogle();
+      try {
+        window.localStorage.setItem(AUTH_ACTIVE_KEY, "1");
+      } catch {
+        /* ignore */
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Sign in failed";
-      // Ignore user closed popup
       if (!message.includes("popup-closed-by-user")) {
         setAuthError(message);
       }
@@ -239,7 +288,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     setAuthError(null);
     try {
-      await signOutUser();
+      const fb = await import("./firebase");
+      await fb.signOutUser();
+      try {
+        window.localStorage.removeItem(AUTH_ACTIVE_KEY);
+      } catch {
+        /* ignore */
+      }
     } catch (err: unknown) {
       setAuthError(err instanceof Error ? err.message : "Sign out failed");
     }
@@ -257,7 +312,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         const scanPath = `users/${user.uid}/scans/${scan.id}`;
         try {
-          const scanRef = doc(db, "users", user.uid, "scans", scan.id);
+          const [{ doc, setDoc }, fb] = await Promise.all([
+            import("firebase/firestore"),
+            import("./firebase"),
+          ]);
+          const scanRef = doc(fb.db, "users", user.uid, "scans", scan.id);
           await setDoc(scanRef, {
             id: scan.id,
             userId: user.uid,
@@ -270,7 +329,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             ...(scan.swarmReports ? { swarmReports: scan.swarmReports } : {}),
           });
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, scanPath);
+          const fb = await import("./firebase");
+          fb.handleFirestoreError(err, fb.OperationType.WRITE, scanPath);
         }
       }
     },
@@ -297,7 +357,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         const reqPath = `users/${user.uid}/requests/${request.id}`;
         try {
-          const reqRef = doc(db, "users", user.uid, "requests", request.id);
+          const [{ doc, setDoc }, fb] = await Promise.all([
+            import("firebase/firestore"),
+            import("./firebase"),
+          ]);
+          const reqRef = doc(fb.db, "users", user.uid, "requests", request.id);
           const payload = {
             id: request.id,
             userId: user.uid,
@@ -317,7 +381,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           };
           await setDoc(reqRef, payload, { merge: true });
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, reqPath);
+          const fb = await import("./firebase");
+          fb.handleFirestoreError(err, fb.OperationType.WRITE, reqPath);
         }
       }
     },
@@ -349,7 +414,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         const reqPath = `users/${user.uid}/requests/${id}`;
         try {
-          const reqRef = doc(db, "users", user.uid, "requests", id);
+          const [{ doc, updateDoc }, fb] = await Promise.all([
+            import("firebase/firestore"),
+            import("./firebase"),
+          ]);
+          const reqRef = doc(fb.db, "users", user.uid, "requests", id);
           const updatePayload: Record<string, unknown> = {
             status,
             updatedAt: now,
@@ -358,7 +427,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (nextFollowUpAt) updatePayload.followUpAt = nextFollowUpAt;
           await updateDoc(reqRef, updatePayload);
         } catch (err) {
-          handleFirestoreError(err, OperationType.UPDATE, reqPath);
+          const fb = await import("./firebase");
+          fb.handleFirestoreError(err, fb.OperationType.UPDATE, reqPath);
         }
       }
     },
@@ -376,10 +446,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         const reqPath = `users/${user.uid}/requests/${id}`;
         try {
-          const reqRef = doc(db, "users", user.uid, "requests", id);
+          const [{ doc, deleteDoc }, fb] = await Promise.all([
+            import("firebase/firestore"),
+            import("./firebase"),
+          ]);
+          const reqRef = doc(fb.db, "users", user.uid, "requests", id);
           await deleteDoc(reqRef);
         } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, reqPath);
+          const fb = await import("./firebase");
+          fb.handleFirestoreError(err, fb.OperationType.DELETE, reqPath);
         }
       }
     },

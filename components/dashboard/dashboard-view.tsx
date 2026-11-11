@@ -101,7 +101,7 @@ export function DashboardView() {
           finding.broker,
           finding.domain,
           finding.inspectUrl,
-          finding.contactEmail ?? `contact@${finding.domain}`,
+          finding.contactEmail ?? "",
           request?.status ?? "not requested",
         ];
       }),

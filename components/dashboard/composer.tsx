@@ -33,7 +33,6 @@ import {
 import { DATA_LABELS } from "@/lib/types";
 import { addDays, cn, copyText, formatDate } from "@/lib/utils";
 import { CategoryPill, RiskBadge } from "@/components/ui";
-import { ensureGmailToken } from "@/lib/firebase";
 import { sendEmailViaGmail } from "@/lib/gmail";
 
 export type ComposerSeed = {
@@ -227,6 +226,7 @@ export function Composer({
     setGmailError(null);
 
     try {
+      const { ensureGmailToken } = await import("@/lib/firebase");
       const accessToken = await ensureGmailToken();
       await sendEmailViaGmail({
         to: entry.contact.trim(),

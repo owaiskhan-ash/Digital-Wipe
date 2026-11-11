@@ -18,13 +18,32 @@ export type SendEmailResult = {
   threadId: string;
 };
 
-function toBase64Url(str: string): string {
+const STRICT_EMAIL_REGEX =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/;
+
+function stripHeaderControlChars(value: string): string {
+  return value.replace(/[\r\n\0]+/g, " ").trim();
+}
+
+function sanitizeEmailAddress(raw: string, fieldName: "To" | "From"): string {
+  const cleaned = stripHeaderControlChars(raw);
+  if (!cleaned || cleaned.length > 254 || !STRICT_EMAIL_REGEX.test(cleaned)) {
+    throw new Error(`Invalid ${fieldName} email address.`);
+  }
+  return cleaned;
+}
+
+function toBase64Standard(str: string): string {
   const utf8Bytes = new TextEncoder().encode(str);
   let binary = "";
   for (let i = 0; i < utf8Bytes.length; i++) {
     binary += String.fromCharCode(utf8Bytes[i]);
   }
-  return btoa(binary)
+  return btoa(binary);
+}
+
+function toBase64Url(str: string): string {
+  return toBase64Standard(str)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
@@ -36,18 +55,21 @@ export function createRawMimeEmail(params: {
   subject: string;
   body: string;
 }): string {
-  const { to, from, subject, body } = params;
-  const encodedSubject = `=?UTF-8?B?${toBase64Url(subject)}?=`;
+  const safeFrom = sanitizeEmailAddress(params.from, "From");
+  const safeTo = sanitizeEmailAddress(params.to, "To");
+  const safeSubject = stripHeaderControlChars(params.subject).slice(0, 500);
+  const encodedSubject = `=?UTF-8?B?${toBase64Standard(safeSubject)}?=`;
+  const normalizedBody = params.body.replace(/\r?\n/g, "\r\n");
 
   const mimeLines = [
-    `From: ${from}`,
-    `To: ${to}`,
+    `From: ${safeFrom}`,
+    `To: ${safeTo}`,
     `Subject: ${encodedSubject}`,
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
     "",
-    body,
+    normalizedBody,
   ];
 
   return toBase64Url(mimeLines.join("\r\n"));

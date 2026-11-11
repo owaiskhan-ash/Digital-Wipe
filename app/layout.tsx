@@ -32,8 +32,8 @@ export const metadata: Metadata = {
     "privacy tool",
     "Untrace",
   ],
-  authors: [{ name: "Owais Khan", url: SITE_URL }],
-  creator: "Owais Khan",
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  creator: SITE_NAME,
   publisher: SITE_NAME,
   category: "privacy",
   robots: {

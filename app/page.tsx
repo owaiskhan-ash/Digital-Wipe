@@ -35,7 +35,6 @@ const CATEGORY_ORDER: Category[] = [
   "people-search",
   "marketing",
   "adtech",
-  "breach",
   "public-records",
   "search",
 ];
@@ -235,8 +234,8 @@ const STRUCTURED_DATA = {
 };
 
 const PREVIEW_EMAIL = {
-  contactEmail: "privacy@spokeo.com",
-  subject: "Erasure request under Article 17 GDPR (name and phone number)",
+  contactEmail: "privacy@directory-site.org",
+  subject: "Erasure request under Article 17 GDPR (phone number and listing URL)",
   body: `To the Privacy Team,
 
 I am the data subject identified below. I am writing to exercise my right to erasure under Article 17(1) of the GDPR, and my right to object to processing under Article 21.
@@ -358,9 +357,9 @@ export default function HomePage() {
                 One identifier is enough to find you.
               </h2>
               <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-soft">
-                Reverse-lookup sites, caller-ID apps, lead databases and old
-                breach dumps all key off the same two things: a phone number and
-                an email address. None of them asked you first.
+                Reverse-lookup sites, caller-ID apps, agency footers and lead
+                databases all key off the same two things: a phone number and an
+                email address. None of them asked you first.
               </p>
             </div>
 
@@ -420,7 +419,7 @@ export default function HomePage() {
               <div className="max-w-2xl">
                 <SectionLabel>The landscape</SectionLabel>
                 <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
-                  Six kinds of footprint. Different owners, different rules.
+                  Five kinds of footprint. Different owners, different rules.
                 </h2>
               </div>
               <p className="max-w-xs text-sm leading-relaxed text-muted">

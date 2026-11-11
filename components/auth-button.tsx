@@ -15,8 +15,10 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { FIREBASE_PROJECT_ID } from "@/lib/firebase";
+import firebaseConfig from "@/firebase-applet-config.json";
 import { copyText } from "@/lib/utils";
+
+const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
 
 export function AuthButton() {
   const { user, authLoading, signIn, signOut, authError, clearAuthError, isSyncing } = useStore();

@@ -92,12 +92,12 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     const cleanEmail = email.trim();
 
     if (scanMode === "phone" && cleanPhone.replace(/\D/g, "").length < 7) {
-      setError("Please enter a valid phone number (e.g. 9819708112 or +91 9819708112).");
+      setError("Please enter a valid phone number (at least 7 digits).");
       return;
     }
 
     if (scanMode === "email" && !/\S+@\S+\.\S+/.test(cleanEmail)) {
-      setError("Please enter a valid email address (e.g. you@example.com).");
+      setError("Please enter a valid email address.");
       return;
     }
 
@@ -148,9 +148,9 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           (cleanEmail ? cleanEmail.split("@")[0] : "") ||
           cleanPhone ||
           "Data Subject",
-        city: existingScan?.profile.city || "India",
+        city: existingScan?.profile.city || "",
         region: existingScan?.profile.region || "",
-        country: existingScan?.profile.country || "India",
+        country: existingScan?.profile.country || "United States",
         phones:
           scanMode === "phone"
             ? Array.from(new Set([cleanPhone, ...(existingScan?.profile.phones ?? [])]))
@@ -360,7 +360,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                 className="field mt-2 bg-surface font-mono text-base py-3.5"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
-                placeholder="e.g. 9819708112 or +91 9819708112"
+                placeholder="Enter your phone number"
                 autoComplete="tel"
                 inputMode="tel"
                 required
@@ -383,7 +383,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                 className="field mt-2 bg-surface font-mono text-base py-3.5"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="e.g. owaiskhan@adryvo.in or you@gmail.com"
+                placeholder="Enter your email address"
                 autoComplete="email"
                 inputMode="email"
                 required
@@ -405,7 +405,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               className="field"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              placeholder="e.g. Owais Khan"
+              placeholder="Optional full name for signing letters"
               autoComplete="name"
             />
           </div>
@@ -466,7 +466,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               {
                 icon: MailCheck,
                 title: "Scrapes Contact Emails for Removal",
-                body: "Automatically extracts the contact/owner email from each website (e.g. stalitemedia@gmail.com, owaiskhan@adryvo.in) so you can send a 1-click Gmail removal request.",
+                body: "Automatically extracts the published contact or privacy email from each website so you can review and send a 1-click Gmail removal request.",
               },
             ].map((item) => (
               <li key={item.title} className="flex gap-3">
