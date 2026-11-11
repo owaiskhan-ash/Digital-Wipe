@@ -56,6 +56,18 @@ export function MobileShell() {
   const pathname = usePathname() || "/";
   const { user, authLoading, signIn, signOut } = useStore();
   const [open, setOpen] = useState(false);
+  // Kept mounted through the closing animation so the panel slides out
+  // instead of vanishing.
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setMounted(false), 300);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   // Close the drawer whenever the route changes.
   useEffect(() => {
@@ -80,7 +92,7 @@ export function MobileShell() {
     <div className="md:hidden">
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-50 max-w-[100vw] overflow-x-hidden border-t border-line/80 bg-paper/95 backdrop-blur-md"
+        className="fixed inset-x-0 bottom-0 z-50 max-w-[100vw] overflow-x-hidden border-t border-line bg-paper"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="mx-auto flex max-w-md items-stretch justify-around px-2">
@@ -92,13 +104,13 @@ export function MobileShell() {
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex min-h-[3.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[0.6875rem] font-medium tracking-wide transition-colors",
+                  "flex min-h-[3.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[0.6875rem] font-medium tracking-wide transition-[color,transform] duration-200 active:scale-[0.94] active:text-ink",
                   active ? "text-moss-deep" : "text-muted"
                 )}
               >
                 <span
                   className={cn(
-                    "grid size-9 place-items-center rounded-full transition-colors",
+                    "grid size-9 place-items-center rounded-full transition-[background-color,color,transform] duration-200",
                     active ? "bg-moss-soft text-moss-deep" : "text-muted"
                   )}
                 >
@@ -114,7 +126,7 @@ export function MobileShell() {
             onClick={() => setOpen(true)}
             aria-expanded={open}
             aria-haspopup="dialog"
-            className="flex min-h-[3.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[0.6875rem] font-medium tracking-wide text-muted transition-colors"
+            className="flex min-h-[3.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[0.6875rem] font-medium tracking-wide text-muted transition-[color,transform] duration-200 active:scale-[0.94] active:text-ink"
           >
             <span className="grid size-9 place-items-center rounded-full">
               <Menu className="size-[1.15rem]" strokeWidth={1.7} aria-hidden />
@@ -124,20 +136,31 @@ export function MobileShell() {
         </div>
       </nav>
 
-      {open ? (
-        <div className="fixed inset-0 z-[60]">
+      {mounted ? (
+        <div
+          className={cn("fixed inset-0 z-[60]", open ? "pointer-events-auto" : "pointer-events-none")}
+        >
           <button
             type="button"
             aria-label="Close menu"
+            tabIndex={open ? 0 : -1}
             onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-ink/35 backdrop-blur-[2px]"
+            className={cn(
+              "absolute inset-0 bg-ink/35 transition-opacity duration-300 ease-out",
+              open ? "opacity-100" : "opacity-0"
+            )}
           />
 
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Menu"
-            className="absolute inset-y-0 right-0 flex w-[84%] max-w-sm flex-col border-l border-line bg-paper shadow-2xl"
+            aria-hidden={!open}
+            inert={!open}
+            className={cn(
+              "absolute inset-y-0 right-0 flex w-[84%] max-w-sm flex-col border-l border-line bg-paper shadow-2xl transition-transform duration-300 ease-out will-change-transform",
+              open ? "translate-x-0" : "translate-x-full"
+            )}
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
           >
             <div className="flex items-center justify-between border-b border-line px-5 py-4">

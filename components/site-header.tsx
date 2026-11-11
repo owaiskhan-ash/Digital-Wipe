@@ -12,7 +12,9 @@ const NAV = [
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-md">
+    // Solid on phones: a frosted header re-blurs on every scroll frame, which is
+    // the difference between smooth and stuttery on a mid-range Android.
+    <header className="sticky top-0 z-40 border-b border-line/80 bg-paper md:bg-paper/85 md:backdrop-blur-md">
       <div className="container-page flex h-16 items-center justify-between gap-4 md:h-[4.5rem] md:gap-6">
         <Logo />
 

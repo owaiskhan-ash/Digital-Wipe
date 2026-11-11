@@ -144,7 +144,7 @@ export function RequestsPanel({
         </p>
       </div>
 
-      <div className="mt-5 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="mt-5 flex flex-wrap gap-1.5">
         <button
           type="button"
           onClick={() => setFilter("all")}

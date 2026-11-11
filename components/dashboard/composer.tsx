@@ -298,11 +298,11 @@ export function Composer({
               <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-line bg-moss-soft text-moss">
                 <Mail className="size-4" strokeWidth={1.7} aria-hidden />
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-[0.6875rem] uppercase tracking-[0.16em] text-muted">
                   Removal request
                 </p>
-                <p className="truncate text-sm font-medium text-ink">
+                <p className="line-clamp-2 text-sm font-medium text-ink">
                   {entry.finding.broker}
                   <span className="ml-2 font-normal text-muted">{entry.finding.domain}</span>
                 </p>
@@ -578,19 +578,19 @@ export function Composer({
             </div>
 
             <div className="mt-4 rounded-xl border border-line bg-mist/50 p-3.5 text-xs space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted">From:</span>
-                <span className="font-medium text-ink truncate max-w-[280px]">
+              <div className="flex justify-between gap-3">
+                <span className="shrink-0 text-muted">From:</span>
+                <span className="min-w-0 truncate font-medium text-ink">
                   {user?.email || "Connected Google Account"}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">To:</span>
-                <span className="font-medium text-ink">{entry.contact}</span>
+              <div className="flex justify-between gap-3">
+                <span className="shrink-0 text-muted">To:</span>
+                <span className="min-w-0 break-words text-right font-medium text-ink">{entry.contact}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Subject:</span>
-                <span className="font-medium text-ink truncate max-w-[280px]">{entry.subject}</span>
+              <div className="flex justify-between gap-3">
+                <span className="shrink-0 text-muted">Subject:</span>
+                <span className="min-w-0 truncate font-medium text-ink">{entry.subject}</span>
               </div>
             </div>
 

@@ -236,7 +236,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         role="status"
         aria-live="polite"
       >
-        <div className="card p-7 md:p-9">
+        <div className="card p-5 md:p-9">
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="inline-flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-[0.2em] text-moss-deep">
@@ -247,7 +247,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                 )}
                 {scanMode === "phone" ? "Phone Number Scan Active" : "Email Scan Active"}
               </p>
-              <h2 className="mt-2 font-display text-[1.9rem] leading-tight">
+              <h2 className="mt-2 font-display text-[1.6rem] leading-tight md:text-[1.9rem]">
                 Finding every web page mentioning {targetDisplay}
               </h2>
             </div>
@@ -316,7 +316,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         </div>
 
         <aside className="flex flex-col gap-5">
-          <div className="card flex-1 p-7">
+          <div className="card flex-1 p-5 md:p-7">
             <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
               Current Step
             </p>
@@ -360,7 +360,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       onSubmit={submit}
       className="grid items-start gap-5 lg:grid-cols-[1.15fr_0.85fr]"
     >
-      <div className="card p-6 md:p-8">
+      <div className="card p-4 md:p-8">
         {/* Bifurcated Mode Selector: Phone Number Scan vs Email Scan */}
         <div className="grid grid-cols-2 gap-2.5 rounded-2xl border border-line bg-mist/60 p-2">
           <button
@@ -370,7 +370,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               setError("");
             }}
             className={cn(
-              "flex items-center justify-center gap-2 rounded-xl py-3.5 px-4 text-sm font-medium transition-all",
+              "flex flex-col items-center justify-center gap-1.5 rounded-xl px-2.5 py-3 text-[0.8125rem] font-medium leading-tight transition-all sm:flex-row sm:gap-2 sm:px-4 sm:py-3.5 sm:text-sm",
               scanMode === "phone"
                 ? "bg-moss text-paper shadow-sm"
                 : "text-ink-soft hover:bg-surface hover:text-ink"
@@ -387,7 +387,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               setError("");
             }}
             className={cn(
-              "flex items-center justify-center gap-2 rounded-xl py-3.5 px-4 text-sm font-medium transition-all",
+              "flex flex-col items-center justify-center gap-1.5 rounded-xl px-2.5 py-3 text-[0.8125rem] font-medium leading-tight transition-all sm:flex-row sm:gap-2 sm:px-4 sm:py-3.5 sm:text-sm",
               scanMode === "email"
                 ? "bg-moss text-paper shadow-sm"
                 : "text-ink-soft hover:bg-surface hover:text-ink"
@@ -398,10 +398,10 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           </button>
         </div>
 
-        <div className="mt-7 space-y-6">
+        <div className="mt-5 space-y-5 md:mt-7 md:space-y-6">
           {scanMode === "phone" ? (
-            <div className="rounded-2xl border border-moss/30 bg-moss-soft/35 p-6">
-              <label className="label flex items-center gap-2 text-base" htmlFor="phoneInput">
+            <div className="rounded-2xl border border-moss/30 bg-moss-soft/35 p-4 md:p-6">
+              <label className="label flex items-start gap-2 text-[0.9375rem] leading-snug md:items-center md:text-base" htmlFor="phoneInput">
                 <Phone className="size-4 text-moss" />
                 Enter Phone Number to Find Across the Internet <span className="text-clay">*</span>
               </label>
@@ -423,8 +423,8 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               </p>
             </div>
           ) : (
-            <div className="rounded-2xl border border-moss/30 bg-moss-soft/35 p-6">
-              <label className="label flex items-center gap-2 text-base" htmlFor="emailInput">
+            <div className="rounded-2xl border border-moss/30 bg-moss-soft/35 p-4 md:p-6">
+              <label className="label flex items-start gap-2 text-[0.9375rem] leading-snug md:items-center md:text-base" htmlFor="emailInput">
                 <Mail className="size-4 text-moss" />
                 Enter Email Address to Find Across the Internet <span className="text-clay">*</span>
               </label>
@@ -493,7 +493,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           ) : null}
         </div>
 
-        <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-6">
+        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5 md:mt-8 md:pt-6">
           <button type="submit" className="btn btn-primary" disabled={!agreed}>
             {scanMode === "phone" ? "Run Phone Number Scan" : "Run Email Scan"}
             <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
@@ -505,7 +505,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       </div>
 
       <aside className="space-y-5">
-        <div className="card p-6 md:p-7">
+        <div className="card p-5 md:p-7">
           <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
             Two Dedicated Scans
           </p>
