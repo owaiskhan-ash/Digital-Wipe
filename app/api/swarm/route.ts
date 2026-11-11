@@ -943,9 +943,12 @@ export async function GET(request: Request) {
   const sample = params.get("sample")?.trim() || "";
   const sampleMode: "phone" | "email" =
     params.get("mode") === "email" ? "email" : "phone";
+  // ?ddg=1 exercises the keyless open web provider on its own, which answers
+  // in a second or two when it works and fails fast when the host is blocked.
+  const wantsDdg = params.get("ddg") === "1";
   // ?only=1 runs the sample search on its own, so the timing it reports is the
   // search's rather than the search plus two probes.
-  const sampleOnly = params.get("only") === "1" && Boolean(sample);
+  const sampleOnly = (params.get("only") === "1" && Boolean(sample)) || wantsDdg;
 
   try {
     const selftestDeadline = Date.now() + 50_000;
@@ -980,6 +983,35 @@ export async function GET(request: Request) {
           ok: false,
           error: describeSearchError(err),
           raw: errorText(err).slice(0, 500),
+        };
+      }
+    }
+
+    let webprobe: Record<string, unknown> | null = null;
+    if (wantsDdg) {
+      const webStartedAt = Date.now();
+      try {
+        const hits = await duckDuckGoProvider.search(
+          sample || "untrace privacy",
+          AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
+        );
+        webprobe = {
+          ok: true,
+          elapsedMs: Date.now() - webStartedAt,
+          hits: hits.length,
+          hosts: hits.slice(0, 3).map((hit) => {
+            try {
+              return new URL(hit.url).hostname;
+            } catch {
+              return hit.url.slice(0, 60);
+            }
+          }),
+        };
+      } catch (err) {
+        webprobe = {
+          ok: false,
+          elapsedMs: Date.now() - webStartedAt,
+          error: errorText(err).slice(0, 300),
         };
       }
     }
@@ -1031,6 +1063,7 @@ export async function GET(request: Request) {
           endpoint: probe.endpoint,
           latencyMs: Date.now() - startedAt,
           grounding,
+          ...(webprobe ? { webprobe } : {}),
           ...(dryrun ? { dryrun } : {}),
         },
       },
@@ -1112,41 +1145,43 @@ export async function POST(request: Request) {
   let engine: string | null = null;
   let searchCompleted = false;
 
-  // 1. Grounded Google Search through Gemini
-  if (!apiKey) {
-    errors.push("GEMINI_API_KEY is not set in Settings > Secrets, so live Google Search grounding did not run.");
-  } else {
-    try {
-      const groundedPrompt = buildGroundedPrompt(mode, targetValue);
-
-      const grounded = await generateGroundedSearch(apiKey, groundedPrompt, deadline);
-      const mentions = await extractGroundedMentions(grounded.response, targetValue);
-
-      searchCompleted = true;
-      engine = `Google Search (Gemini ${grounded.model})`;
-
-      if (mentions.length > 0) {
-        allMentions.push(...mentions);
-      }
-    } catch (err) {
-      console.error("Grounded Google Search failed:", err);
-      errors.push(describeSearchError(err));
-    }
+  // 1. Open web search first. It answers in a second or two, while a grounded
+  // search routinely needs half a minute, so running the slow one first used to
+  // starve the fast one out of the budget entirely.
+  const web = await searchOpenWeb(mode, targetValue, deadline);
+  if (web.mentions.length > 0) {
+    allMentions.push(...web.mentions);
+    engine = web.provider ?? null;
+    searchCompleted = true;
+  } else if (web.provider) {
+    searchCompleted = true;
+    engine = web.provider;
   }
+  errors.push(...web.errors);
 
-  // 2. Open web search fallback when grounded search returned nothing or failed
-  if (allMentions.length === 0 && (!searchCompleted || remainingMs(deadline) > 6000)) {
-    const web = await searchOpenWeb(mode, targetValue, deadline);
-    if (web.mentions.length > 0) {
-      allMentions.push(...web.mentions);
-      engine = web.provider ?? engine;
-      searchCompleted = true;
-    } else if (web.provider) {
-      searchCompleted = true;
-      engine = engine ?? web.provider;
-    }
-    if (web.errors.length > 0) {
-      errors.push(...web.errors);
+  // 2. Grounded Google Search when the open web gave nothing, and only while
+  // there is enough of the budget left for it to have a chance of finishing.
+  if (allMentions.length === 0 && remainingMs(deadline) > 10_000) {
+    if (!apiKey) {
+      errors.push(
+        "GEMINI_API_KEY is not set in Settings > Secrets, so live Google Search grounding did not run."
+      );
+    } else {
+      try {
+        const grounded = await generateGroundedSearch(
+          apiKey,
+          buildGroundedPrompt(mode, targetValue),
+          deadline
+        );
+        const mentions = await extractGroundedMentions(grounded.response, targetValue);
+
+        searchCompleted = true;
+        engine = engine ?? `Google Search (Gemini ${grounded.model})`;
+        allMentions.push(...mentions);
+      } catch (err) {
+        console.error("Grounded Google Search failed:", err);
+        errors.push(describeSearchError(err));
+      }
     }
   }
 
