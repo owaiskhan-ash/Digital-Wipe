@@ -115,10 +115,16 @@ export function SwarmPanel({
     setRunning(true);
     setError(null);
 
+    // The server stops itself at 40s, so this only fires if the connection
+    // itself stalls. Without it the panel spins with no way out.
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 50_000);
+
     try {
       const response = await fetch("/api/swarm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           mode: modeToRun,
           phone: modeToRun === "phone" ? cleanPhone : undefined,
@@ -154,9 +160,14 @@ export function SwarmPanel({
       );
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Could not complete the scan."
+        controller.signal.aborted
+          ? "The scan ran out of time. Try again, or set a search provider key so scans do not depend on the grounded search finishing."
+          : err instanceof Error
+            ? err.message
+            : "Could not complete the scan."
       );
     } finally {
+      window.clearTimeout(timeoutId);
       setRunning(false);
     }
   };
