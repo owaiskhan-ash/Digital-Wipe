@@ -17,18 +17,22 @@ import {
 import { useStore } from "@/lib/store";
 import type { BreachExposure, Finding, ScanResult, SwarmAgentReport } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ProgressRing } from "@/components/scan/progress-ring";
 
 const PHONE_STAGES = [
   {
     label: "Step 01 · Searching Google for Exact Phone Number",
+    short: "Search",
     detail: "Checking plain 10-digit, +91 / international, and spaced formats across Google Search",
   },
   {
     label: "Step 02 · Extracting All Web Pages & Blog Mentions",
+    short: "Extract",
     detail: "Capturing every agency page, blog post, case study, and directory listing your number",
   },
   {
     label: "Step 03 · Compiling Results into Dashboard",
+    short: "Compile",
     detail: "Organizing all verified web pages (site contact emails can be resolved on-demand in your queue)",
   },
 ];
@@ -36,14 +40,17 @@ const PHONE_STAGES = [
 const EMAIL_STAGES = [
   {
     label: "Step 01 · Searching Google for Exact Email Address",
+    short: "Search",
     detail: "Scanning Google Search for every web page, blog, and directory mentioning this address",
   },
   {
     label: "Step 02 · Extracting All Web Pages Mentioning Your Email",
+    short: "Extract",
     detail: "Capturing every website and page where your email address is published",
   },
   {
     label: "Step 03 · Compiling Results into Dashboard",
+    short: "Compile",
     detail: "Organizing all verified web pages (site contact emails can be resolved on-demand in your queue)",
   },
 ];
@@ -238,7 +245,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       >
         <div data-reveal className="card p-5 md:p-9">
           <div className="flex items-end justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <p className="inline-flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-[0.2em] text-moss-deep">
                 {scanMode === "phone" ? (
                   <Phone className="size-3.5 animate-pulse text-moss" />
@@ -251,24 +258,26 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                 Finding every web page mentioning {targetDisplay}
               </h2>
             </div>
-            <span className="font-display text-3xl tabular-nums text-moss">
-              {Math.round(progress)}%
+          </div>
+
+          <ProgressRing
+            progress={progress}
+            stages={stages}
+            activeIndex={stageIndex}
+          />
+          <p className="sr-only" aria-live="polite">
+            {currentStage.label}
+          </p>
+
+          <div className="mt-5 flex items-center justify-between gap-3 text-xs text-muted">
+            <span className="min-w-0">
+              <span className="sm:hidden">Searching the live web…</span>
+              <span className="hidden sm:inline">Live web search in progress</span>
             </span>
-          </div>
-
-          <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-mist">
-            <div
-              className="h-full rounded-full bg-moss transition-[width] duration-200 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          <div className="mt-4 flex items-center justify-between text-xs text-muted">
-            <span>Live web search in progress</span>
             <button
               type="button"
               onClick={cancelScan}
-              className="text-muted hover:text-ink underline underline-offset-2 transition-colors"
+              className="shrink-0 text-muted underline underline-offset-2 transition-colors hover:text-ink"
             >
               Cancel scan
             </button>
