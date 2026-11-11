@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { normaliseProfile, type RawProfileInput } from "@/lib/profile";
-import firebaseConfig from "@/firebase-applet-config.json";
 import type {
   BreachExposure,
   Category,
@@ -9,7 +8,6 @@ import type {
   Effort,
   ExposureMatchType,
   Finding,
-  Profile,
   Risk,
   SwarmAgentReport,
   SwarmWebSource,
@@ -17,6 +15,13 @@ import type {
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+/** Total time the handler may spend looking things up. */
+const SCAN_BUDGET_MS = 45_000;
+/** Per-request ceiling for the Gemini client. */
+const GEMINI_TIMEOUT_MS = 20_000;
+/** Ceiling for a single search provider request. */
+const PROVIDER_TIMEOUT_MS = 8_000;
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 10;
@@ -80,6 +85,19 @@ const RESERVED_OR_FAKE_DOMAINS = new Set([
   "invalid",
 ]);
 
+/** Hosts that are search engines rather than the pages themselves. */
+const SEARCH_ENGINE_HOSTS = [
+  "duckduckgo.com",
+  "google.com",
+  "google.co.in",
+  "google.co.uk",
+  "bing.com",
+  "yahoo.com",
+  "search.brave.com",
+  "serper.dev",
+  "tavily.com",
+];
+
 function isValidPublicDomain(domain: string): boolean {
   const clean = domain.toLowerCase().trim();
   if (!clean || !clean.includes(".")) return false;
@@ -90,162 +108,202 @@ function isValidPublicDomain(domain: string): boolean {
   for (const reserved of RESERVED_OR_FAKE_DOMAINS) {
     if (clean.endsWith(`.${reserved}`)) return false;
   }
+  if (SEARCH_ENGINE_HOSTS.some((host) => clean === host || clean.endsWith(`.${host}`))) {
+    return false;
+  }
   return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(clean);
 }
 
+function domainFromUrl(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0]
+    .split("?")[0]
+    .trim();
+}
+
 /**
- * Discovers a configured Gemini API key across any common environment variable name.
+ * Reads the configured Gemini key. Only explicit variable names are honoured,
+ * so an unrelated key in the environment cannot be picked up by accident.
  */
 function resolveGeminiApiKey(): string | undefined {
-  const cleanKey = (val?: string) =>
-    val ? val.trim().replace(/^["']|["']$/g, "").trim() : "";
-
-  const directCandidates = [
+  const candidates = [
     process.env.GEMINI_API_KEY,
-    process.env.GOOGLE_API_KEY,
+    process.env.GOOGLE_GEMINI_API_KEY,
     process.env.GOOGLE_GENAI_API_KEY,
     process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     process.env.GEMINI_KEY,
-    process.env.GEMINI_TOKEN,
-    process.env.GEMINI_SECRET,
-    process.env.GEMINI,
-    process.env.GOOGLE_AI_KEY,
-    process.env.GOOGLE_AI_API_KEY,
-    process.env.GENAI_API_KEY,
-    process.env.NEXT_PUBLIC_GEMINI_API_KEY,
-    process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
-    process.env.NEXT_PUBLIC_GEMINI_KEY,
-    process.env.NEXT_PUBLIC_API_KEY,
-    process.env.API_KEY,
+    process.env.GOOGLE_API_KEY,
   ];
 
-  for (const candidate of directCandidates) {
-    const cleaned = cleanKey(candidate);
-    if (cleaned && cleaned.length >= 20) {
-      return cleaned;
-    }
-  }
-
-  try {
-    const firebaseWebKey = firebaseConfig?.apiKey || "";
-    for (const [rawName, rawVal] of Object.entries(process.env)) {
-      const name = rawName.trim().toUpperCase();
-      const val = cleanKey(rawVal);
-      if (!val || val.length < 20) continue;
-      if (name.includes("GEMINI") || name.includes("GENAI")) {
-        return val;
-      }
-      if (val.startsWith("AIzaSy") && val !== firebaseWebKey && !name.includes("FIREBASE")) {
-        return val;
-      }
-    }
-  } catch {
-    // ignore env enumeration restrictions
+  for (const candidate of candidates) {
+    const cleaned = candidate?.trim().replace(/^["']|["']$/g, "").trim();
+    if (!cleaned) continue;
+    if (cleaned.length < 20 || /\s/.test(cleaned)) continue;
+    return cleaned;
   }
 
   return undefined;
 }
 
-let cachedKeyStatus: { key: string; valid: boolean; lastChecked: number } | null = null;
-
-async function isApiKeyFunctional(key?: string): Promise<boolean> {
-  if (!key || key.length < 20) return false;
-  const now = Date.now();
-  if (
-    cachedKeyStatus &&
-    cachedKeyStatus.key === key &&
-    now - cachedKeyStatus.lastChecked < 120_000
-  ) {
-    return cachedKeyStatus.valid;
-  }
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
-      { signal: AbortSignal.timeout(1800) }
-    );
-    const valid = res.ok;
-    cachedKeyStatus = { key, valid, lastChecked: now };
-    return valid;
-  } catch {
-    return false;
-  }
+function maskKey(key?: string): string | null {
+  if (!key) return null;
+  return `${key.slice(0, 6)}...${key.slice(-4)}`;
 }
 
-export async function GET() {
-  const apiKey = resolveGeminiApiKey();
-  const functional = await isApiKeyFunctional(apiKey);
-  const directKeys = [
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "GOOGLE_GENAI_API_KEY",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-    "GEMINI_KEY",
-    "GEMINI_TOKEN",
-    "GEMINI_SECRET",
-    "GEMINI",
-    "GOOGLE_AI_KEY",
-    "GOOGLE_AI_API_KEY",
-    "GENAI_API_KEY",
-    "NEXT_PUBLIC_GEMINI_API_KEY",
-    "NEXT_PUBLIC_GOOGLE_API_KEY",
-    "API_KEY",
-  ];
-  const detectedKeys = directKeys.filter((k) => {
-    const val = process.env[k];
-    return typeof val === "string" && val.trim().length > 0;
-  });
-
-  return NextResponse.json({
-    status: "ok",
-    scanEngineReady: true,
-    geminiActive: functional,
-    engine: functional ? "Google Search Grounding (Gemini)" : "Open-Web Search Engine",
-    detectedKeyVariables: detectedKeys,
-    keyMasked: apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : null,
-    instruction: functional
-      ? "Gemini Search Grounding is active and ready."
-      : "Open-Web Search Engine is active. To enable Gemini Search Grounding, select or add an active API key in Settings > Secrets.",
-  });
-}
-
-function getGeminiClient(apiKey: string) {
+function getGeminiClient(apiKey: string, useVertex: boolean): GoogleGenAI {
   return new GoogleGenAI({
     apiKey,
-    vertexai: false,
+    vertexai: useVertex,
+    ...(useVertex ? { location: "global" } : {}),
     httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
+      timeout: GEMINI_TIMEOUT_MS,
+      headers: { "User-Agent": "untrace-scan" },
     },
   });
 }
 
+const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-2.5-flash"];
+const PREFERRED_MODELS = [
+  "gemini-flash-latest",
+  "gemini-flash-lite-latest",
+  "gemini-3.8-flash",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+];
+const modelCache = new Map<string, string[]>();
+
+/** Asks the API which models this key can actually call, then orders them. */
+async function listUsableModels(ai: GoogleGenAI, cacheKey: string): Promise<string[]> {
+  const cached = modelCache.get(cacheKey);
+  if (cached) return cached;
+
+  let resolved: string[] = [];
+  try {
+    const pager = await ai.models.list();
+    const names: string[] = [];
+    for await (const model of pager) {
+      const name = (model.name ?? "").replace(/^models\//, "");
+      if (!name) continue;
+      if (/embedding|embed|aqa|imagen|veo|gemma|learnlm/i.test(name)) continue;
+      const actions = model.supportedActions;
+      if (Array.isArray(actions) && actions.length > 0 && !actions.includes("generateContent")) {
+        continue;
+      }
+      names.push(name);
+    }
+    const preferred = PREFERRED_MODELS.filter((model) => names.includes(model));
+    const remaining = names
+      .filter((model) => /flash/i.test(model) && !preferred.includes(model))
+      .sort();
+    resolved = [...preferred, ...remaining].slice(0, 3);
+  } catch {
+    resolved = [];
+  }
+
+  const finalList = resolved.length > 0 ? resolved : [...FALLBACK_MODELS];
+  modelCache.set(cacheKey, finalList);
+  return finalList;
+}
+
+function errorText(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+function isAuthError(err: unknown): boolean {
+  return /401|403|API_KEY_SERVICE_BLOCKED|API keys are not supported|UNAUTHENTICATED|PERMISSION_DENIED|ACCESS_TOKEN_TYPE|invalid api key|API_KEY_INVALID/i.test(
+    errorText(err)
+  );
+}
+
+function describeSearchError(err: unknown): string {
+  const text = errorText(err);
+
+  if (/API_KEY_INVALID|API key not valid|invalid api key/i.test(text)) {
+    return "The Gemini API key was rejected as invalid. Create a key in Google AI Studio and set GEMINI_API_KEY in Vercel, then redeploy.";
+  }
+  if (isAuthError(err)) {
+    return "The Gemini API rejected this key for the Developer API. Use an AI Studio key that starts with AIza, or run the request against Vertex instead.";
+  }
+  if (/RESOURCE_EXHAUSTED|quota|rate limit/i.test(text)) {
+    return "The Gemini API quota for this key is exhausted. Use a key with billing enabled, or wait for the quota to reset.";
+  }
+  if (/404|not found|NOT_FOUND/i.test(text)) {
+    return "No Gemini model was available for this key. Check that the Generative Language API is enabled for the project that owns the key.";
+  }
+  if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(text)) {
+    return `The Gemini API could not be reached from the server (${text.slice(0, 120)}).`;
+  }
+  return text.slice(0, 300) || "The Gemini request failed.";
+}
+
+type GenerateOutcome = {
+  response: unknown;
+  model: string;
+  endpoint: "developer" | "vertex";
+};
+
 /**
- * Runs a live Google-Search-grounded Gemini request.
- * Never combine responseMimeType="application/json" with tools: [{ googleSearch: {} }].
+ * Runs a Gemini call against the Developer API first, then Vertex (express mode)
+ * when the key is rejected there. Both paths use the same key.
  */
-async function generateGroundedSearch(ai: GoogleGenAI, prompt: string) {
-  const modelsToTry = [
-    "gemini-3.8-flash",
-    "gemini-flash-latest",
-    "gemini-3.1-flash-lite",
+async function generateWithFallback(
+  apiKey: string,
+  contents: string,
+  config: Record<string, unknown>
+): Promise<GenerateOutcome> {
+  const attempts: Array<{ endpoint: "developer" | "vertex"; ai: GoogleGenAI }> = [
+    { endpoint: "developer", ai: getGeminiClient(apiKey, false) },
+    { endpoint: "vertex", ai: getGeminiClient(apiKey, true) },
   ];
 
-  let lastErr: unknown = null;
-  for (const model of modelsToTry) {
-    try {
-      return await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      });
-    } catch (err: unknown) {
-      lastErr = err;
+  let firstError: unknown = null;
+
+  for (const attempt of attempts) {
+    const models = await listUsableModels(attempt.ai, attempt.endpoint);
+    let authFailed = false;
+
+    for (const model of models) {
+      try {
+        const response = await attempt.ai.models.generateContent({
+          model,
+          contents,
+          config,
+        });
+        return { response, model, endpoint: attempt.endpoint };
+      } catch (err) {
+        firstError = firstError ?? err;
+        if (isAuthError(err)) {
+          authFailed = true;
+          break;
+        }
+      }
     }
+
+    if (attempt.endpoint === "vertex" || authFailed) continue;
+    throw firstError;
   }
-  throw lastErr ?? new Error("Grounded search failed across all models");
+
+  throw firstError ?? new Error("No Gemini model answered the request.");
+}
+
+/**
+ * Runs a live Google Search grounded request.
+ * Never combine responseMimeType="application/json" with tools: [{ googleSearch: {} }].
+ */
+async function generateGroundedSearch(
+  apiKey: string,
+  prompt: string
+): Promise<GenerateOutcome> {
+  return generateWithFallback(apiKey, prompt, { tools: [{ googleSearch: {} }] });
 }
 
 function buildPhonePermutations(rawPhone: string): string[] {
@@ -275,81 +333,48 @@ function buildPhonePermutations(rawPhone: string): string[] {
 }
 
 /**
- * Resolves a vertexaisearch grounding redirect URL using GET with short timeout.
+ * Resolves a vertexaisearch grounding redirect to the page it points at.
+ * Follows the redirect first and falls back to reading the Location header.
  */
 async function resolveRedirectUrl(uri: string): Promise<string> {
   if (!uri.includes("vertexaisearch.cloud.google.com")) {
     return uri;
   }
-  try {
-    const res = await fetch(uri, {
-      method: "GET",
-      redirect: "manual",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      },
-      signal: AbortSignal.timeout(1500),
-    });
-    const loc = res.headers.get("location");
-    if (loc && loc.startsWith("http")) {
-      return loc;
-    }
-  } catch {
-    // ignore timeout
-  }
-  return uri;
-}
 
-/**
- * Fetches a website's homepage to quickly extract contact emails.
- */
-async function scrapeEmailsFromWebsite(urlOrDomain: string): Promise<string[]> {
-  const cleanDomain = urlOrDomain
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split("/")[0]
-    .trim();
-
-  if (!isValidPublicDomain(cleanDomain)) {
-    return [];
-  }
-
-  const foundEmails = new Set<string>();
-  const ignoredEmailPatterns =
-    /\.(png|jpg|jpeg|gif|svg|webp|woff|woff2|ttf|css|js)$|example\.com|example\.org|example\.net|sentry\.io|wixpress\.com|schema\.org|company\.com|yourdomain/i;
-
-  const extractFromText = (txt: string) => {
-    const matches = txt.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? [];
-    for (const rawEmail of matches) {
-      const clean = rawEmail.trim().replace(/^[.,;]+|[.,;]+$/g, "");
-      if (!ignoredEmailPatterns.test(clean) && clean.length <= 64) {
-        foundEmails.add(clean);
-      }
-    }
+  const headers = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml",
   };
 
-  const targetUrl = urlOrDomain.startsWith("http")
-    ? urlOrDomain
-    : `https://www.${cleanDomain}`;
-
   try {
-    const res = await fetch(targetUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      },
-      signal: AbortSignal.timeout(1800),
+    const res = await fetch(uri, {
+      redirect: "follow",
+      headers,
+      signal: AbortSignal.timeout(5000),
     });
-    if (res.ok) {
-      const html = await res.text();
-      extractFromText(html);
+    if (res.url && !res.url.includes("vertexaisearch.cloud.google.com")) {
+      return res.url;
     }
+    const location = res.headers.get("location");
+    if (location && location.startsWith("http")) return location;
   } catch {
-    // ignore fetch errors
+    // fall through to the manual attempt
   }
 
-  return Array.from(foundEmails);
+  try {
+    const res = await fetch(uri, {
+      redirect: "manual",
+      headers,
+      signal: AbortSignal.timeout(4000),
+    });
+    const location = res.headers.get("location");
+    if (location && location.startsWith("http")) return location;
+  } catch {
+    // unresolved
+  }
+
+  return uri;
 }
 
 type GroundedMention = {
@@ -360,49 +385,10 @@ type GroundedMention = {
   contactEmail?: string;
 };
 
-function textMentionsTarget(text: string, targetValue: string): boolean {
-  const lowerText = text.toLowerCase();
-  const lowerTarget = targetValue.toLowerCase().trim();
-  if (lowerTarget && lowerText.includes(lowerTarget)) return true;
-  const digits = lowerTarget.replace(/\D/g, "");
-  const last10 = digits.length >= 10 ? digits.slice(-10) : "";
-  if (last10.length === 10 && lowerText.replace(/[\s()-]/g, "").includes(last10)) {
-    return true;
-  }
-  return false;
-}
-
 /**
- * Fast check whether a page carries the identifier, with a strict 1500ms timeout.
- */
-async function pageShowsTarget(url: string, targetValue: string): Promise<boolean> {
-  const lower = targetValue.toLowerCase().trim();
-  const digits = lower.replace(/\D/g, "");
-  const last10 = digits.length >= 10 ? digits.slice(-10) : "";
-
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      },
-      signal: AbortSignal.timeout(1500),
-    });
-    if (!res.ok) return false;
-    const body = (await res.text()).toLowerCase();
-    if (body.includes(lower)) return true;
-    if (last10.length === 10 && body.replace(/[\s()-]/g, "").includes(last10)) {
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Extracts structured mentions from Gemini's text response and Google Search Grounding chunks.
- * Uses fast parallel processing so scans never stall.
+ * Extracts structured mentions from Gemini's text response and from Google
+ * Search grounding chunks. Chunks are kept when the redirect resolves, and
+ * identified by title only when the title carries a domain.
  */
 async function extractGroundedMentions(
   response: unknown,
@@ -435,45 +421,47 @@ async function extractGroundedMentions(
       text.match(/(\[\s*\{[\s\S]*\}\s*\])/);
     const candidateJson = jsonBlockMatch ? jsonBlockMatch[1] : text;
     const parsed = JSON.parse(candidateJson.trim());
-    if (Array.isArray(parsed)) {
-      for (const item of parsed) {
-        if (!item || typeof item !== "object") continue;
-        const rawUrl = String(item.url || item.inspectUrl || item.removalUrl || "").trim();
-        const rawDomain = String(item.domain || rawUrl || "")
-          .toLowerCase()
-          .replace(/^https?:\/\//, "")
-          .replace(/^www\./, "")
-          .split("/")[0]
-          .trim();
+    const items: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : typeof parsed === "object" && parsed !== null
+        ? ((parsed as { results?: unknown[]; findings?: unknown[] }).results ??
+          (parsed as { findings?: unknown[] }).findings ??
+          [])
+        : [];
 
-        if (!isValidPublicDomain(rawDomain)) continue;
-        if (!rawUrl.startsWith("http")) continue;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const record = item as Record<string, unknown>;
+      const rawUrl = String(record.url || record.inspectUrl || record.removalUrl || "").trim();
+      if (!rawUrl.startsWith("http")) continue;
 
-        const title = String(item.title || item.broker || rawDomain).trim();
-        const snippet = String(item.snippet || item.summary || "").trim();
-        if (!snippet) continue;
+      const rawDomain = domainFromUrl(
+        String(record.domain || rawUrl).toLowerCase().includes("://")
+          ? String(record.domain || rawUrl)
+          : `https://${String(record.domain || rawUrl)}`
+      );
+      if (!isValidPublicDomain(rawDomain)) continue;
 
-        const dedupKey = `${rawUrl.toLowerCase()}::${title.toLowerCase()}`;
-        if (seenUrls.has(dedupKey)) continue;
-        seenUrls.add(dedupKey);
+      const title = String(record.title || record.broker || rawDomain).trim();
+      const snippet = String(record.snippet || record.summary || "").trim();
+      if (!snippet) continue;
 
-        mentions.push({
-          title,
-          url: rawUrl,
-          domain: rawDomain,
-          snippet,
-          contactEmail:
-            typeof item.contactEmail === "string" && item.contactEmail.includes("@")
-              ? item.contactEmail.trim()
-              : undefined,
-        });
-      }
+      const dedupKey = `${rawUrl.toLowerCase()}::${title.toLowerCase()}`;
+      if (seenUrls.has(dedupKey)) continue;
+      seenUrls.add(dedupKey);
+
+      const contactEmail =
+        typeof record.contactEmail === "string" && record.contactEmail.includes("@")
+          ? record.contactEmail.trim()
+          : undefined;
+
+      mentions.push({ title, url: rawUrl, domain: rawDomain, snippet, contactEmail });
     }
   } catch {
-    // Continue to groundingChunks extraction
+    // Continue to grounding chunk extraction
   }
 
-  // 2. Extract verified Google Search Grounding chunks in parallel
+  // 2. Extract Google Search grounding chunks
   const metadata = respObj?.candidates?.[0]?.groundingMetadata;
   const chunks = metadata?.groundingChunks ?? [];
   const supports = metadata?.groundingSupports ?? [];
@@ -488,19 +476,13 @@ async function extractGroundedMentions(
 
   for (let idx = 0; idx < chunks.length; idx++) {
     const chunk = chunks[idx];
-    const rawUri = chunk?.web?.uri || "";
-    const resolvedUri = resolvedChunkUrls[idx] || rawUri;
+    const resolvedUri = resolvedChunkUrls[idx] || chunk?.web?.uri || "";
     const rawTitle = chunk?.web?.title?.trim() || "";
     if (!resolvedUri) continue;
 
     let domain = "";
     if (!resolvedUri.includes("vertexaisearch.cloud.google.com")) {
-      domain = resolvedUri
-        .toLowerCase()
-        .replace(/^https?:\/\//, "")
-        .replace(/^www\./, "")
-        .split("/")[0]
-        .trim();
+      domain = domainFromUrl(resolvedUri);
     } else {
       const titleDomainMatch = rawTitle.match(/([a-z0-9-]+\.[a-z.]{2,})/i);
       if (titleDomainMatch) {
@@ -511,12 +493,11 @@ async function extractGroundedMentions(
     if (!isValidPublicDomain(domain)) continue;
 
     const matchingSupportTexts = supports
-      .filter((s) => s.groundingChunkIndices?.includes(idx))
-      .map((s) => s.segment?.text?.trim() || "")
+      .filter((support) => support.groundingChunkIndices?.includes(idx))
+      .map((support) => support.segment?.text?.trim() || "")
       .filter(Boolean);
 
     const combinedSupport = matchingSupportTexts.join(" · ");
-
     const dedupKey = `${resolvedUri.toLowerCase()}::${(rawTitle || domain).toLowerCase()}`;
     if (seenUrls.has(dedupKey)) continue;
     seenUrls.add(dedupKey);
@@ -533,6 +514,7 @@ async function extractGroundedMentions(
 
   return mentions;
 }
+
 function decodeHtmlEntities(str: string): string {
   return str
     .replace(/&amp;/g, "&")
@@ -545,106 +527,392 @@ function decodeHtmlEntities(str: string): string {
     .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)));
 }
 
+type ProviderHit = {
+  title: string;
+  url: string;
+  snippet: string;
+};
 
+type SearchProvider = {
+  name: string;
+  isConfigured: () => boolean;
+  search: (query: string, signal: AbortSignal) => Promise<ProviderHit[]>;
+};
 
+function envKey(...names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
 
-/**
- * Searches the open web directly via search engine endpoints.
- * Provides resilient, high-speed discovery of web pages mentioning the phone or email.
- */
-async function performOpenWebSearch(
-  mode: "phone" | "email",
-  targetValue: string
-): Promise<GroundedMention[]> {
-  const mentions: GroundedMention[] = [];
-  const seenUrls = new Set<string>();
+const braveProvider: SearchProvider = {
+  name: "Brave Search",
+  isConfigured: () => Boolean(envKey("BRAVE_SEARCH_API_KEY", "BRAVE_API_KEY")),
+  search: async (query, signal) => {
+    const key = envKey("BRAVE_SEARCH_API_KEY", "BRAVE_API_KEY");
+    const res = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=20`,
+      {
+        headers: { Accept: "application/json", "X-Subscription-Token": key },
+        signal,
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) throw new Error(`Brave Search returned ${res.status}`);
+    const data = (await res.json()) as {
+      web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
+    };
+    return (data.web?.results ?? []).map((hit) => ({
+      title: decodeHtmlEntities(hit.title ?? ""),
+      url: hit.url ?? "",
+      snippet: decodeHtmlEntities(hit.description ?? ""),
+    }));
+  },
+};
 
-  const queries =
-    mode === "phone"
-      ? buildPhonePermutations(targetValue).slice(0, 3)
-      : [targetValue];
+const serperProvider: SearchProvider = {
+  name: "Serper",
+  isConfigured: () => Boolean(envKey("SERPER_API_KEY")),
+  search: async (query, signal) => {
+    const key = envKey("SERPER_API_KEY");
+    const res = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "X-API-KEY": key, "content-type": "application/json" },
+      body: JSON.stringify({ q: query, num: 20 }),
+      signal,
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Serper returned ${res.status}`);
+    const data = (await res.json()) as {
+      organic?: Array<{ title?: string; link?: string; snippet?: string }>;
+    };
+    return (data.organic ?? []).map((hit) => ({
+      title: decodeHtmlEntities(hit.title ?? ""),
+      url: hit.link ?? "",
+      snippet: decodeHtmlEntities(hit.snippet ?? ""),
+    }));
+  },
+};
 
-  for (const q of queries) {
-    try {
-      const searchUrl = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q);
-      const res = await fetch(searchUrl, {
+const tavilyProvider: SearchProvider = {
+  name: "Tavily",
+  isConfigured: () => Boolean(envKey("TAVILY_API_KEY")),
+  search: async (query, signal) => {
+    const key = envKey("TAVILY_API_KEY");
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ query, max_results: 20, search_depth: "basic" }),
+      signal,
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Tavily returned ${res.status}`);
+    const data = (await res.json()) as {
+      results?: Array<{ title?: string; url?: string; content?: string }>;
+    };
+    return (data.results ?? []).map((hit) => ({
+      title: decodeHtmlEntities(hit.title ?? ""),
+      url: hit.url ?? "",
+      snippet: decodeHtmlEntities((hit.content ?? "").slice(0, 400)),
+    }));
+  },
+};
+
+const googleCseProvider: SearchProvider = {
+  name: "Google Programmable Search",
+  isConfigured: () =>
+    Boolean(
+      envKey("GOOGLE_SEARCH_API_KEY", "GOOGLE_CSE_API_KEY") &&
+        envKey("GOOGLE_SEARCH_CX", "GOOGLE_CSE_ID")
+    ),
+  search: async (query, signal) => {
+    const key = envKey("GOOGLE_SEARCH_API_KEY", "GOOGLE_CSE_API_KEY");
+    const cx = envKey("GOOGLE_SEARCH_CX", "GOOGLE_CSE_ID");
+    const res = await fetch(
+      `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(
+        key
+      )}&cx=${encodeURIComponent(cx)}&num=10&q=${encodeURIComponent(query)}`,
+      { signal, cache: "no-store" }
+    );
+    if (!res.ok) throw new Error(`Google Programmable Search returned ${res.status}`);
+    const data = (await res.json()) as {
+      items?: Array<{ title?: string; link?: string; snippet?: string }>;
+    };
+    return (data.items ?? []).map((hit) => ({
+      title: decodeHtmlEntities(hit.title ?? ""),
+      url: hit.link ?? "",
+      snippet: decodeHtmlEntities(hit.snippet ?? ""),
+    }));
+  },
+};
+
+const duckDuckGoProvider: SearchProvider = {
+  name: "DuckDuckGo",
+  isConfigured: () => true,
+  search: async (query, signal) => {
+    const res = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      {
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml",
+          "Accept-Language": "en-GB,en;q=0.9",
         },
-        signal: AbortSignal.timeout(3500),
+        signal,
+        cache: "no-store",
+      }
+    );
+
+    if (res.status === 202 || res.status === 429) {
+      throw new Error(
+        "DuckDuckGo blocked the request with a challenge page. Set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY for a search provider that allows server traffic."
+      );
+    }
+    if (!res.ok) {
+      throw new Error(`DuckDuckGo returned ${res.status}`);
+    }
+
+    const html = await res.text();
+    if (/anomaly|unusual traffic|captcha/i.test(html) && !html.includes("result__a")) {
+      throw new Error(
+        "DuckDuckGo returned a challenge page instead of results. Set a search provider key to search from the server."
+      );
+    }
+
+    const anchors = [
+      ...html.matchAll(
+        /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
+      ),
+    ];
+    const snippets = [
+      ...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g),
+    ];
+
+    const hits: ProviderHit[] = [];
+    for (let index = 0; index < anchors.length; index++) {
+      let url = anchors[index][1];
+      const uddg = url.match(/uddg=([^&]+)/);
+      if (uddg) {
+        try {
+          url = decodeURIComponent(uddg[1]);
+        } catch {
+          // keep the raw href
+        }
+      }
+      if (!url.startsWith("http")) continue;
+      hits.push({
+        title: decodeHtmlEntities(anchors[index][2].replace(/<[^>]+>/g, "").trim()),
+        url,
+        snippet: decodeHtmlEntities(
+          (snippets[index] ? snippets[index][1].replace(/<[^>]+>/g, "") : "").trim()
+        ),
       });
+    }
+    return hits;
+  },
+};
 
-      if (!res.ok) continue;
-      const html = await res.text();
+const SEARCH_PROVIDERS: SearchProvider[] = [
+  braveProvider,
+  serperProvider,
+  tavilyProvider,
+  googleCseProvider,
+  duckDuckGoProvider,
+];
 
-      const linkMatches = [
-        ...html.matchAll(
-          /<a[^>]+class="result__url"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
-        ),
-      ];
-      const titleMatches = [
-        ...html.matchAll(/<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>/g),
-      ];
-      const snippetMatches = [
-        ...html.matchAll(
-          /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
-        ),
-      ];
+function remainingMs(deadline: number): number {
+  return Math.max(0, deadline - Date.now());
+}
 
-      for (let i = 0; i < linkMatches.length; i++) {
-        const rawHref = linkMatches[i][1];
-        let actualUrl = rawHref;
-        const uddgMatch = rawHref.match(/uddg=([^&]+)/);
-        if (uddgMatch) {
-          try {
-            actualUrl = decodeURIComponent(uddgMatch[1]);
-          } catch {
-            actualUrl = rawHref;
-          }
+type OpenWebResult = {
+  mentions: GroundedMention[];
+  provider: string | null;
+  errors: string[];
+};
+
+/**
+ * Searches the open web through the first configured provider that answers.
+ * A provider that is blocked or misconfigured reports why, so the caller can
+ * tell "nothing found" apart from "nothing searched".
+ */
+async function searchOpenWeb(
+  mode: "phone" | "email",
+  targetValue: string,
+  deadline: number
+): Promise<OpenWebResult> {
+  const mentions: GroundedMention[] = [];
+  const seenUrls = new Set<string>();
+  const errors: string[] = [];
+
+  const queries =
+    mode === "phone" ? buildPhonePermutations(targetValue).slice(0, 3) : [targetValue];
+
+  const providers = SEARCH_PROVIDERS.filter((provider) => provider.isConfigured());
+  const failedProviders = new Set<string>();
+  let usedProvider: string | null = null;
+
+  for (const query of queries) {
+    if (remainingMs(deadline) < 3000) break;
+
+    for (const provider of providers) {
+      if (usedProvider && provider.name !== usedProvider) continue;
+      if (failedProviders.has(provider.name)) continue;
+      if (remainingMs(deadline) < 3000) break;
+
+      try {
+        const hits = await provider.search(
+          query,
+          AbortSignal.timeout(Math.min(PROVIDER_TIMEOUT_MS, remainingMs(deadline)))
+        );
+
+        let added = 0;
+        for (const hit of hits) {
+          if (!hit.url.startsWith("http")) continue;
+          const domain = domainFromUrl(hit.url);
+          if (!isValidPublicDomain(domain)) continue;
+
+          const dedupKey = hit.url.toLowerCase();
+          if (seenUrls.has(dedupKey)) continue;
+          seenUrls.add(dedupKey);
+
+          mentions.push({
+            title: hit.title || domain,
+            url: hit.url,
+            domain,
+            snippet:
+              hit.snippet || `Webpage on ${domain} mentioning "${targetValue}".`,
+          });
+          added += 1;
+          if (mentions.length >= 10) break;
         }
 
-        if (!actualUrl.startsWith("http")) continue;
-
-        const rawDomain = actualUrl
-          .toLowerCase()
-          .replace(/^https?:\/\//, "")
-          .replace(/^www\./, "")
-          .split("/")[0]
-          .trim();
-
-        if (!isValidPublicDomain(rawDomain)) continue;
-
-        const rawTitle = titleMatches[i]
-          ? titleMatches[i][1].replace(/<[^>]+>/g, "").trim()
-          : rawDomain;
-        const rawSnippet = snippetMatches[i]
-          ? snippetMatches[i][1].replace(/<[^>]+>/g, "").trim()
-          : "Webpage on " + rawDomain + " mentioning \"" + targetValue + "\".";
-
-        const title = decodeHtmlEntities(rawTitle);
-        const snippet = decodeHtmlEntities(rawSnippet);
-
-        const dedupKey = actualUrl.toLowerCase();
-        if (seenUrls.has(dedupKey)) continue;
-        seenUrls.add(dedupKey);
-
-        mentions.push({
-          title: title || rawDomain,
-          url: actualUrl,
-          domain: rawDomain,
-          snippet,
-        });
-
-        if (mentions.length >= 12) break;
+        if (added > 0) {
+          usedProvider = provider.name;
+          break;
+        }
+      } catch (err) {
+        const message = errorText(err).slice(0, 200);
+        failedProviders.add(provider.name);
+        errors.push(`${provider.name}: ${message}`);
+        if (usedProvider === provider.name) usedProvider = null;
       }
-    } catch {
-      // Continue next query
     }
+
     if (mentions.length >= 8) break;
   }
 
-  return mentions;
+  return { mentions, provider: usedProvider, errors: [...new Set(errors)] };
+}
+
+function providerStatus(): Record<string, boolean> {
+  const status: Record<string, boolean> = {};
+  for (const provider of SEARCH_PROVIDERS) {
+    status[provider.name] = provider.isConfigured();
+  }
+  return status;
+}
+
+/**
+ * Real check of the configured models, used by the self test. One token, one request.
+ */
+async function probeGemini(apiKey: string): Promise<{ model: string; endpoint: string }> {
+  const outcome = await generateWithFallback(apiKey, "ping", { maxOutputTokens: 1 });
+  return { model: outcome.model, endpoint: outcome.endpoint };
+}
+
+export async function GET(request: Request) {
+  const apiKey = resolveGeminiApiKey();
+  const providers = providerStatus();
+  const keyedProviders = Object.entries(providers)
+    .filter(([name, ready]) => ready && name !== "DuckDuckGo")
+    .map(([name]) => name);
+
+  const base = {
+    status: "ok",
+    scanEngineReady: Boolean(apiKey),
+    geminiActive: null as boolean | null,
+    engine: [
+      apiKey ? "Gemini Search Grounding (unverified, run ?selftest=1)" : null,
+      ...keyedProviders,
+      "DuckDuckGo",
+    ]
+      .filter(Boolean)
+      .join(" + "),
+    detectedKeyVariables: [
+      "GEMINI_API_KEY",
+      "GOOGLE_GEMINI_API_KEY",
+      "GOOGLE_GENAI_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "GEMINI_KEY",
+      "GOOGLE_API_KEY",
+    ].filter((name) => Boolean(process.env[name]?.trim())),
+    keyMasked: maskKey(apiKey),
+    searchProviders: providers,
+    instruction: apiKey
+      ? "A key is configured. Add ?selftest=1 to confirm the API accepts it."
+      : "Set GEMINI_API_KEY in Vercel (Production and Preview), then redeploy.",
+    fallbackNote:
+      keyedProviders.length === 0
+        ? "No keyed search provider is configured, so the fallback is DuckDuckGo, which blocks datacenter traffic. Set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY."
+        : null,
+  };
+
+  const wantsSelfTest = new URL(request.url).searchParams.get("selftest") === "1";
+  if (!wantsSelfTest) {
+    return NextResponse.json(base, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  const rate = checkRateLimit(request);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ...base, selftest: { ok: false, error: "Too many checks. Try again shortly." } },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
+    );
+  }
+
+  if (!apiKey) {
+    return NextResponse.json(
+      {
+        ...base,
+        selftest: { ok: false, error: "GEMINI_API_KEY is not set in this environment." },
+      },
+      { status: 503 }
+    );
+  }
+
+  const startedAt = Date.now();
+  try {
+    const probe = await probeGemini(apiKey);
+    return NextResponse.json(
+      {
+        ...base,
+        geminiActive: true,
+        selftest: {
+          ok: true,
+          model: probe.model,
+          endpoint: probe.endpoint,
+          latencyMs: Date.now() - startedAt,
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ...base,
+        selftest: {
+          ok: false,
+          latencyMs: Date.now() - startedAt,
+          error: describeSearchError(err),
+          raw: errorText(err).slice(0, 500),
+        },
+      },
+      { status: 502, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -700,47 +968,35 @@ export async function POST(request: Request) {
     );
   }
 
-  const profile: Profile = {
-    fullName:
-      payload.fullName?.trim() ||
-      rawProfile.fullName ||
-      (emailTarget ? emailTarget.split("@")[0] : "") ||
-      targetValue,
-    city: rawProfile.city || "",
-    region: rawProfile.region || "",
-    country: rawProfile.country || "United States",
-    emails: emailTarget ? [emailTarget] : rawProfile.emails,
-    phones: phoneTarget ? [phoneTarget] : rawProfile.phones,
-    usernames: rawProfile.usernames,
-  };
-
+  const deadline = Date.now() + SCAN_BUDGET_MS;
   const apiKey = resolveGeminiApiKey();
   const allMentions: GroundedMention[] = [];
-  let searchError: string | null = null;
+  const errors: string[] = [];
+  let engine: string | null = null;
 
-  // 1. If Gemini API key is functional, run live Google Search Grounding via Gemini
-  const canUseGemini = await isApiKeyFunctional(apiKey);
-  if (apiKey && canUseGemini) {
+  // 1. Grounded Google Search through Gemini
+  if (!apiKey) {
+    errors.push("GEMINI_API_KEY is not set, so the grounded search did not run.");
+  } else {
     try {
-      const ai = getGeminiClient(apiKey);
       const perms =
         mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
-      const searchTermsFormatted = perms.map((p) => `"${p}"`).join(" OR ");
+      const searchTermsFormatted = perms.map((term) => `"${term}"`).join(" OR ");
+      const digits = targetValue.replace(/\D/g, "");
+      const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
       const emailParts =
-        mode === "email" && targetValue.includes("@")
-          ? targetValue.split("@")
-          : [];
+        mode === "email" && targetValue.includes("@") ? targetValue.split("@") : [];
 
       const groundedPrompt =
         mode === "phone"
           ? `Use Google Search to search for the exact phone number: ${searchTermsFormatted}
-Also search Google for "${targetValue.replace(/\D/g, "").slice(-10)}".
+Also search Google for "${last10}".
 
 CRITICAL INSTRUCTIONS:
-1. Look at EVERY actual website, agency page, blog post, case study, portfolio, or directory returned by Google Search where the number "${targetValue}" (or "${targetValue.replace(/\D/g, "").slice(-10)}") is mentioned on the page.
+1. Look at EVERY actual website, agency page, blog post, case study, portfolio, or directory returned by Google Search where the number "${targetValue}" (or "${last10}") is mentioned on the page.
 2. Include ALL real webpages from the Google Search results (including multiple pages or blog posts from the same website if they appear in Google Search).
 3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish this phone number, return an empty JSON array: [].
-4. Return a JSON array inside a \`\`\`json code block where each item has:
+4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
    - "title": Exact page title from Google Search
    - "url": Full https:// URL of the page from Google Search
    - "domain": Real website domain from the URL
@@ -756,30 +1012,45 @@ CRITICAL INSTRUCTIONS:
 1. Look at EVERY actual website, company page, agency site, blog post, case study, contact page, or directory returned by Google Search that shows or mentions the email address "${targetValue}".
 2. Include ALL real webpages from the Google Search results (including multiple pages, case studies, or blog posts from the same website if they show this email address).
 3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish "${targetValue}", return an empty JSON array: [].
-4. Return a JSON array inside a \`\`\`json code block where each item has:
+4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
    - "title": Exact page title from Google Search
    - "url": Full https:// URL of the page from Google Search
    - "domain": Real website domain from the URL
    - "snippet": The exact snippet or context showing how "${targetValue}" appears on that page
    - "contactEmail": A distinct owner, webmaster, or privacy contact email address for that website (do NOT set contactEmail to "${targetValue}")`;
 
-      const response = await generateGroundedSearch(ai, groundedPrompt);
-      const grounded = await extractGroundedMentions(response, targetValue);
-      allMentions.push(...grounded);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      searchError = errMsg;
-      if (apiKey) {
-        cachedKeyStatus = { key: apiKey, valid: false, lastChecked: Date.now() };
+      const grounded = await generateGroundedSearch(apiKey, groundedPrompt);
+      const mentions = await extractGroundedMentions(grounded.response, targetValue);
+
+      if (mentions.length > 0) {
+        allMentions.push(...mentions);
+        engine = `Gemini ${grounded.model}`;
       }
+    } catch (err) {
+      console.error("Grounded search failed:", err);
+      errors.push(describeSearchError(err));
     }
   }
 
-  // 2. Open-Web Search Engine Fallback
-  // If Gemini was unconfigured, had an invalid key, or returned 0 mentions:
-  if (allMentions.length === 0) {
-    const webMentions = await performOpenWebSearch(mode, targetValue);
-    allMentions.push(...webMentions);
+  // 2. Open web search when the grounded search produced nothing
+  if (allMentions.length === 0 && remainingMs(deadline) > 4000) {
+    const web = await searchOpenWeb(mode, targetValue, deadline);
+    if (web.mentions.length > 0) {
+      allMentions.push(...web.mentions);
+      engine = web.provider ?? engine;
+    }
+    errors.push(...web.errors);
+  }
+
+  // 3. Nothing searched at all is an error, not an empty report
+  if (allMentions.length === 0 && errors.length > 0) {
+    return NextResponse.json(
+      {
+        error: `No search could be completed, so nothing was checked. ${errors[0]}`,
+        details: errors,
+      },
+      { status: 502, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   const now = new Date().toISOString();
@@ -792,17 +1063,14 @@ CRITICAL INSTRUCTIONS:
 
     const snippetEmails = (
       item.snippet.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? []
-    ).filter((e) => e.toLowerCase() !== lowerTargetEmail);
+    ).filter((email) => email.toLowerCase() !== lowerTargetEmail);
 
     const itemContactCandidate =
       item.contactEmail && item.contactEmail.toLowerCase() !== lowerTargetEmail
         ? item.contactEmail
         : undefined;
 
-    const resolvedEmail =
-      itemContactCandidate ||
-      snippetEmails[0] ||
-      undefined;
+    const resolvedEmail = itemContactCandidate || snippetEmails[0] || undefined;
 
     const dataFields: DataType[] =
       mode === "phone"
@@ -841,10 +1109,23 @@ CRITICAL INSTRUCTIONS:
     };
   });
 
-  const sources: SwarmWebSource[] = findings.slice(0, 10).map((f) => ({
-    title: f.broker,
-    uri: f.inspectUrl,
+  const sources: SwarmWebSource[] = findings.slice(0, 10).map((finding) => ({
+    title: finding.broker,
+    uri: finding.inspectUrl,
   }));
+
+  const partial = errors.length > 0;
+  const engineLabel = engine ?? "no search engine";
+
+  const summary = partial
+    ? `Partial report: ${findings.length} ${
+        findings.length === 1 ? "page" : "pages"
+      } from ${engineLabel}. ${errors[0]}`
+    : findings.length > 0
+      ? `Found ${findings.length} ${
+          findings.length === 1 ? "webpage" : "webpages"
+        } mentioning ${targetValue} via ${engineLabel}.`
+      : `Searched via ${engineLabel} and found no public page mentioning ${targetValue}.`;
 
   const reports: SwarmAgentReport[] = [
     {
@@ -855,13 +1136,8 @@ CRITICAL INSTRUCTIONS:
         mode === "phone"
           ? `Finds every webpage mentioning ${targetValue}`
           : `Finds every webpage showing ${targetValue}`,
-      status: "completed",
-      summary:
-        findings.length > 0
-          ? `Found ${findings.length} ${
-              findings.length === 1 ? "webpage" : "webpages"
-            } mentioning ${targetValue} across public web indexes.`
-          : `Searched the open web and found no public page mentioning ${targetValue}.`,
+      status: partial ? "error" : "completed",
+      summary,
       queriesRun: [targetValue],
       sources,
       findingsCount: findings.length,
@@ -877,12 +1153,14 @@ CRITICAL INSTRUCTIONS:
       reports,
       breaches,
       checked: findings.length,
-      ...(searchError ? { warning: searchError } : {}),
+      engine,
+      ...(partial ? { warning: errors.join(" ") } : {}),
     },
     {
       headers: {
         "X-RateLimit-Limit": String(RATE_LIMIT_MAX_REQUESTS),
         "X-RateLimit-Remaining": String(rate.remaining),
+        "Cache-Control": "no-store",
       },
     }
   );
