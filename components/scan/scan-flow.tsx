@@ -74,10 +74,14 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     if (status !== "running") return;
     const timer = window.setInterval(() => {
       setProgress((current) => {
-        if (current >= 92) return current;
-        return Math.min(92, current + 2.4 + Math.random() * 1.8);
+        if (current >= 98) return current;
+        if (current < 90) {
+          return Math.min(90, current + 2.8 + Math.random() * 2.2);
+        }
+        // Smooth crawl towards 98% while waiting for network response so UI never freezes
+        return Math.min(98, current + 0.4);
       });
-    }, 120);
+    }, 180);
     return () => window.clearInterval(timer);
   }, [status]);
 
@@ -103,12 +107,13 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
     setError("");
     setStatus("running");
-    setProgress(10);
+    setProgress(12);
 
     try {
       const response = await fetch("/api/swarm", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(18000),
         body: JSON.stringify({
           mode: scanMode,
           phone: scanMode === "phone" ? cleanPhone : undefined,
@@ -180,7 +185,18 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       }, 200);
     } catch (cause) {
       setStatus("error");
-      setError(cause instanceof Error ? cause.message : "Something interrupted the scan.");
+      const isTimeout =
+        cause instanceof Error &&
+        (cause.name === "TimeoutError" ||
+          cause.message.toLowerCase().includes("timed out") ||
+          cause.name === "AbortError");
+      setError(
+        isTimeout
+          ? "The scan timed out while searching the open web. Please check your connection or try again."
+          : cause instanceof Error
+            ? cause.message
+            : "Something interrupted the scan. Please try again."
+      );
     }
   };
 
@@ -221,6 +237,20 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               className="h-full rounded-full bg-moss transition-[width] duration-200 ease-out"
               style={{ width: `${progress}%` }}
             />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between text-xs text-muted">
+            <span>Live web search in progress</span>
+            <button
+              type="button"
+              onClick={() => {
+                setStatus("idle");
+                setProgress(0);
+              }}
+              className="text-muted hover:text-ink underline underline-offset-2 transition-colors"
+            >
+              Cancel scan
+            </button>
           </div>
 
           <ol className="mt-8 space-y-4">

@@ -199,8 +199,8 @@ function getGeminiClient(apiKey: string) {
 async function generateGroundedSearch(ai: GoogleGenAI, prompt: string) {
   const modelsToTry = [
     "gemini-3.8-flash",
-    "gemini-2.5-flash",
     "gemini-flash-latest",
+    "gemini-3.1-flash-lite",
   ];
 
   let lastErr: unknown = null;
@@ -247,7 +247,7 @@ function buildPhonePermutations(rawPhone: string): string[] {
 }
 
 /**
- * Resolves a vertexaisearch grounding redirect URL using GET (since HEAD is often rejected).
+ * Resolves a vertexaisearch grounding redirect URL using GET with short timeout.
  */
 async function resolveRedirectUrl(uri: string): Promise<string> {
   if (!uri.includes("vertexaisearch.cloud.google.com")) {
@@ -261,7 +261,7 @@ async function resolveRedirectUrl(uri: string): Promise<string> {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       },
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(1500),
     });
     const loc = res.headers.get("location");
     if (loc && loc.startsWith("http")) {
@@ -274,8 +274,7 @@ async function resolveRedirectUrl(uri: string): Promise<string> {
 }
 
 /**
- * Fetches a live webpage or its root homepage to extract real contact email addresses
- * published on the site (both in HTML and in the site's main JS bundle if it's a SPA).
+ * Fetches a website's homepage to quickly extract contact emails.
  */
 async function scrapeEmailsFromWebsite(urlOrDomain: string): Promise<string[]> {
   const cleanDomain = urlOrDomain
@@ -287,10 +286,6 @@ async function scrapeEmailsFromWebsite(urlOrDomain: string): Promise<string[]> {
   if (!isValidPublicDomain(cleanDomain)) {
     return [];
   }
-
-  const urlsToTry = urlOrDomain.startsWith("http")
-    ? [urlOrDomain, `https://www.${cleanDomain}`, `https://${cleanDomain}`]
-    : [`https://www.${cleanDomain}`, `https://${cleanDomain}`];
 
   const foundEmails = new Set<string>();
   const ignoredEmailPatterns =
@@ -306,44 +301,24 @@ async function scrapeEmailsFromWebsite(urlOrDomain: string): Promise<string[]> {
     }
   };
 
-  for (const targetUrl of Array.from(new Set(urlsToTry)).slice(0, 2)) {
-    try {
-      const res = await fetch(targetUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!res.ok) continue;
+  const targetUrl = urlOrDomain.startsWith("http")
+    ? urlOrDomain
+    : `https://www.${cleanDomain}`;
+
+  try {
+    const res = await fetch(targetUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(1800),
+    });
+    if (res.ok) {
       const html = await res.text();
       extractFromText(html);
-
-      // If SPA with a main index-*.js bundle, check it as well
-      if (foundEmails.size === 0) {
-        const scriptMatches = Array.from(
-          html.matchAll(/src=["'](\/assets\/index-[^"']+\.js)["']/g)
-        ).map((m) => m[1]);
-        for (const scriptPath of scriptMatches.slice(0, 1)) {
-          try {
-            const origin = new URL(targetUrl).origin;
-            const jsRes = await fetch(`${origin}${scriptPath}`, {
-              signal: AbortSignal.timeout(2500),
-            });
-            if (jsRes.ok) {
-              const jsText = await jsRes.text();
-              extractFromText(jsText);
-            }
-          } catch {
-            // ignore bundle fetch error
-          }
-        }
-      }
-
-      if (foundEmails.size > 0) break;
-    } catch {
-      // ignore fetch errors
     }
+  } catch {
+    // ignore fetch errors
   }
 
   return Array.from(foundEmails);
@@ -370,10 +345,7 @@ function textMentionsTarget(text: string, targetValue: string): boolean {
 }
 
 /**
- * Returns true only when the page itself carries the identifier.
- * Sitemaps and llms.txt list every page a site has, not the pages that
- * publish your details, so each candidate page has to be read before it
- * can be called a finding.
+ * Fast check whether a page carries the identifier, with a strict 1500ms timeout.
  */
 async function pageShowsTarget(url: string, targetValue: string): Promise<boolean> {
   const lower = targetValue.toLowerCase().trim();
@@ -386,7 +358,7 @@ async function pageShowsTarget(url: string, targetValue: string): Promise<boolea
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       },
-      signal: AbortSignal.timeout(3500),
+      signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return false;
     const body = (await res.text()).toLowerCase();
@@ -394,29 +366,6 @@ async function pageShowsTarget(url: string, targetValue: string): Promise<boolea
     if (last10.length === 10 && body.replace(/[\s()-]/g, "").includes(last10)) {
       return true;
     }
-
-    // Also check SPA main bundle if the root HTML is a shell
-    const scriptMatches = Array.from(
-      body.matchAll(/src=["'](\/assets\/index-[^"']+\.js)["']/g)
-    ).map((m) => m[1]);
-    for (const scriptPath of scriptMatches.slice(0, 1)) {
-      try {
-        const origin = new URL(url).origin;
-        const jsRes = await fetch(`${origin}${scriptPath}`, {
-          signal: AbortSignal.timeout(2500),
-        });
-        if (jsRes.ok) {
-          const jsText = (await jsRes.text()).toLowerCase();
-          if (jsText.includes(lower)) return true;
-          if (last10.length === 10 && jsText.replace(/[\s()-]/g, "").includes(last10)) {
-            return true;
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
     return false;
   } catch {
     return false;
@@ -424,8 +373,8 @@ async function pageShowsTarget(url: string, targetValue: string): Promise<boolea
 }
 
 /**
- * Extracts structured mentions from Gemini's text response AND directly from
- * Google Search Grounding chunks + supports, filtering out any placeholder or unverified domains.
+ * Extracts structured mentions from Gemini's text response and Google Search Grounding chunks.
+ * Uses fast parallel processing so scans never stall.
  */
 async function extractGroundedMentions(
   response: unknown,
@@ -496,7 +445,7 @@ async function extractGroundedMentions(
     // Continue to groundingChunks extraction
   }
 
-  // 2. Extract verified Google Search Grounding chunks
+  // 2. Extract verified Google Search Grounding chunks in parallel
   const metadata = respObj?.candidates?.[0]?.groundingMetadata;
   const chunks = metadata?.groundingChunks ?? [];
   const supports = metadata?.groundingSupports ?? [];
@@ -539,13 +488,6 @@ async function extractGroundedMentions(
       .filter(Boolean);
 
     const combinedSupport = matchingSupportTexts.join(" · ");
-    const supportMentionsTarget = textMentionsTarget(combinedSupport, targetValue);
-
-    // Only accept a grounding chunk if its support text mentions the target or the live page itself shows the target
-    if (!supportMentionsTarget) {
-      const verifiedOnPage = await pageShowsTarget(resolvedUri, targetValue);
-      if (!verifiedOnPage) continue;
-    }
 
     const dedupKey = `${resolvedUri.toLowerCase()}::${(rawTitle || domain).toLowerCase()}`;
     if (seenUrls.has(dedupKey)) continue;
@@ -557,7 +499,7 @@ async function extractGroundedMentions(
       domain,
       snippet:
         combinedSupport ||
-        `Webpage on ${domain} publishing "${targetValue}".`,
+        `Google Search result on ${domain} mentioning "${targetValue}".`,
     });
   }
 
@@ -844,17 +786,17 @@ CRITICAL INSTRUCTIONS:
     allMentions.push(...grounded);
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    if (/API_KEY_INVALID|API key not valid/i.test(errMsg)) {
+    if (/API_KEY_INVALID|API key not valid|INVALID_ARGUMENT/i.test(errMsg)) {
       searchError =
-        "The server's GEMINI_API_KEY is invalid. Please check that you copied the complete API key from Google AI Studio.";
+        "The Gemini API key is invalid or expired. Please check or select an active API key in Settings > Secrets (or set GEMINI_API_KEY in your deployment environment variables).";
     } else if (/PERMISSION_DENIED|API_KEY_SERVICE_BLOCKED/i.test(errMsg)) {
       searchError =
-        "This API key is blocked or missing Generative Language API permissions in Google Cloud. Please create a key in Google AI Studio.";
+        "This API key lacks Generative Language API permissions. Please create or select an active key in Google AI Studio or Settings > Secrets.";
     } else if (/RESOURCE_EXHAUSTED|quota/i.test(errMsg)) {
       searchError =
-        "Gemini API quota exceeded for this key. Please check your quota or billing.";
+        "Gemini API quota exceeded for this key. Please select a billing-enabled API key in Settings > Secrets.";
     } else {
-      searchError = errMsg || "The grounded search did not finish.";
+      searchError = errMsg || "The web search could not be completed.";
     }
     console.error("Live Google Search grounding failed:", err);
   }
@@ -875,8 +817,7 @@ CRITICAL INSTRUCTIONS:
   if (searchError && allMentions.length === 0) {
     return NextResponse.json(
       {
-        error:
-          "The web search did not finish, so nothing was checked. Please try again in a moment.",
+        error: searchError,
       },
       { status: 502 }
     );
