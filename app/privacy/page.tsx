@@ -1,52 +1,59 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Lock, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Lock, MailCheck, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { SectionLabel } from "@/components/ui";
+import { SITE_DOMAIN } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Our privacy note",
+  title: "Privacy Policy",
   description:
-    "A short, honest account of what Untrace does with your details. The short version: they stay in your browser, and nothing is stored on our side.",
+    "How Untrace handles your personal information, Google account authentication, Gmail API permissions, and cloud synchronization.",
   alternates: { canonical: "/privacy" },
 };
 
 const SECTIONS = [
   {
-    title: "What a scan does",
+    title: "Overview & Scope",
     body: [
-      "When you press “Run the scan”, the name, city, country, email addresses, phone numbers and usernames you typed are sent to a stateless scan endpoint. That endpoint matches them against a curated directory of public data-broker opt-out pages and returns a report.",
-      "The request is not written to a database, a log file or a queue. Once the response is returned, the server keeps nothing. There is no account and no analytics attached to any of it.",
+      `This Privacy Policy explains how Untrace (${SITE_DOMAIN}) collects, processes, stores, and protects information when you run a personal data exposure scan, deploy our AI Agent Swarm, or send data-broker deletion requests.`,
+      "Untrace is designed around strict data minimization: you remain in full control of the personal details you search for and the removal notices you choose to send.",
     ],
   },
   {
-    title: "What your browser keeps and optional cloud backup",
+    title: "Information You Provide During a Scan",
     body: [
-      "By default, your report and request history are saved in this browser's local storage under the key untrace.state.v1. You can freely use Untrace without creating an account.",
-      "If you choose to sign in with Google, your report and opt-out requests are encrypted and synchronized with Firebase Firestore under your private authenticated user ID. Only you can read or update your scans and deletion records.",
-      "“Delete” on the report page erases your local state, and signing out removes local session access.",
+      "When you run a scan, you may provide your full name, city, state/region, country, email addresses, phone numbers, and public usernames. These inputs are used solely to check public people-search directories, marketing data brokers, breach archives, and live web search results via our AI reconnaissance agents.",
+      "If you use Untrace without signing in, your scan report and drafted requests are stored locally in your browser's localStorage (under untrace.state.v1) and can be cleared at any time with a single click.",
     ],
   },
   {
-    title: "What we don't do",
+    title: "Google Sign-In & Cloud Backup (Firebase)",
     body: [
-      "No tracking pixels, no advertising networks, no third-party behavioral profiling. Authentication uses Google's secure OAuth flow.",
-      "We never send an email for you. A request leaves only when you press “Open in mail app” or paste it into a company's opt-out form, from your own mailbox.",
+      "If you choose to sign in with Google, we receive your basic Google profile identifiers (name, email address, and profile avatar URL) via Firebase Authentication.",
+      "When signed in, your scan reports and removal request tracker are stored in Google Cloud Firestore under your authenticated user ID, protected by strict security rules so that only you can view, update, or delete your records.",
     ],
   },
   {
-    title: "Other people who see your data",
+    title: "Google Workspace & Gmail API Limited Use Disclosure",
     body: [
-      "When you open an opt-out page, that company's own site receives the request, under its privacy policy, not ours. When you email a company, your mail provider and theirs carry the message.",
-      "The only external links in the product go to those companies, to search engines, and to Have I Been Pwned for breach checks. None of them are loaded inside our pages unless you click.",
+      "Untrace optionally integrates with the Gmail API (scope: https://www.googleapis.com/auth/gmail.send) solely to allow you to send formal personal data deletion and opt-out emails (under GDPR, CCPA, DPDP, and similar privacy statutes) directly from your own email address to data brokers' privacy officers.",
+      "Untrace never reads your inbox, never accesses your existing emails or contacts, and never sends an email without your explicit confirmation on each message. OAuth access tokens for Gmail are held strictly in volatile browser memory during your active session and are never persisted to a database or shared with third parties.",
+      "Untrace's use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy, including the Limited Use requirements.",
     ],
   },
   {
-    title: "About the results",
+    title: "AI Agent Swarm & Third-Party Sites",
     body: [
-      "This build is a prototype. The sources, opt-out links and legal templates are real; the listings are modelled so the full flow can be used before any live data provider is connected. Treat the report as a demonstration, not a legal record.",
-      "Nothing here is legal advice. If a company refuses a valid deletion request, a privacy lawyer or your data protection authority is the next step. Both options are linked from your report.",
+      "When you run the AI Agent Swarm, our server-side reconnaissance endpoint queries Google Search to locate publicly indexed profiles and official Data Protection Officer (DPO) contact emails matching the profile you entered. We do not sell, rent, or monetize your personal information or search queries.",
+      "When you click an external opt-out portal link or dispatch a removal email to a third-party data broker, that company receives your deletion request directly under their respective privacy policy and statutory obligations.",
+    ],
+  },
+  {
+    title: "Data Retention & Deletion Rights",
+    body: [
+      "You can delete your scan data and removal request history at any time using the “Clear” button on your dashboard. You may also revoke Untrace's Google OAuth permissions at any time from your Google Account Security Settings (myaccount.google.com/permissions).",
     ],
   },
 ];
@@ -61,41 +68,49 @@ export default function PrivacyPage() {
           className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-ink"
         >
           <ArrowLeft className="size-3.5" strokeWidth={1.8} aria-hidden />
-          Back
+          Back to home
         </Link>
 
         <div className="mt-8 grid gap-14 lg:grid-cols-[0.8fr_1.2fr]">
           <div>
             <div className="lg:sticky lg:top-28">
-              <SectionLabel>Our own privacy note</SectionLabel>
+              <SectionLabel>Privacy Policy</SectionLabel>
               <h1 className="mt-4 text-[2.4rem] leading-[1.05] sm:text-[2.9rem]">
                 Privacy, for a change.
               </h1>
               <p className="mt-4 max-w-sm text-sm leading-relaxed text-ink-soft">
-                A tool that asks other people to delete your data should be
-                unusually careful with it. Here is exactly what happens.
+                A tool that asks other companies to delete your personal data
+                should be unusually careful with it. Here is exactly how Untrace
+                works.
               </p>
 
               <div className="mt-8 space-y-3">
                 <p className="flex items-center gap-2 text-xs text-muted">
                   <Lock className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
-                  No accounts, no analytics, no cookies
+                  No ad trackers, no data resale, no inbox reading
                 </p>
                 <p className="flex items-center gap-2 text-xs text-muted">
                   <ShieldCheck className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
-                  Reports stay in your browser
+                  Private per-user Firestore isolation when signed in
+                </p>
+                <p className="flex items-center gap-2 text-xs text-muted">
+                  <MailCheck className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
+                  Send-only Gmail permission with explicit confirmation
                 </p>
               </div>
 
               <p className="mt-10 text-xs text-muted">
-                Last updated {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                Effective date: 11 November 2026
               </p>
             </div>
           </div>
 
           <div className="max-w-2xl">
             {SECTIONS.map((section, index) => (
-              <section key={section.title} className="border-t border-line py-8 first:border-t-0 first:pt-0">
+              <section
+                key={section.title}
+                className="border-t border-line py-8 first:border-t-0 first:pt-0"
+              >
                 <div className="flex items-baseline gap-3">
                   <span className="font-display text-sm text-line-strong">
                     {String(index + 1).padStart(2, "0")}
@@ -104,7 +119,10 @@ export default function PrivacyPage() {
                 </div>
                 <div className="mt-3 space-y-3 pl-8">
                   {section.body.map((paragraph) => (
-                    <p key={paragraph.slice(0, 24)} className="text-sm leading-[1.75] text-ink-soft">
+                    <p
+                      key={paragraph.slice(0, 24)}
+                      className="text-sm leading-[1.75] text-ink-soft"
+                    >
                       {paragraph}
                     </p>
                   ))}
@@ -113,19 +131,15 @@ export default function PrivacyPage() {
             ))}
 
             <div className="mt-6 rounded-2xl border border-line bg-surface p-6">
-              <h2 className="text-lg">Questions about this note</h2>
+              <h2 className="text-lg">Contact &amp; Legal Terms</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                This is an independent prototype, so there is no support desk,
-                but every claim above can be checked in the source. The scan
-                endpoint lives in{" "}
-                <code className="rounded bg-mist px-1.5 py-0.5 text-[0.75rem] text-ink-soft">
-                  app/api/scan/route.ts
-                </code>{" "}
-                and the matching model in{" "}
-                <code className="rounded bg-mist px-1.5 py-0.5 text-[0.75rem] text-ink-soft">
-                  lib/scan.ts
-                </code>
-                .
+                For questions regarding this Privacy Policy or our data practices,
+                please review our{" "}
+                <Link href="/terms" className="underline text-ink hover:text-moss">
+                  Terms of Service
+                </Link>{" "}
+                or reach out via{" "}
+                <span className="font-medium text-ink">privacy@{SITE_DOMAIN}</span>.
               </p>
             </div>
           </div>

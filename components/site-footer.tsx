@@ -8,16 +8,17 @@ const COLUMNS = [
     links: [
       { href: "/scan", label: "Start a scan" },
       { href: "/dashboard", label: "Your report" },
+      { href: "/dashboard?tab=swarm", label: "AI Agent Swarm" },
       { href: "/dashboard?tab=requests", label: "Removal requests" },
     ],
   },
   {
-    title: "Learn",
+    title: "Learn & Legal",
     links: [
       { href: "/#how", label: "How it works" },
       { href: "/#coverage", label: "Covered sources" },
-      { href: "/#questions", label: "Questions" },
-      { href: "/privacy", label: "Our privacy" },
+      { href: "/privacy", label: "Privacy Policy" },
+      { href: "/terms", label: "Terms of Service" },
     ],
   },
 ];
@@ -58,16 +59,22 @@ export function SiteFooter() {
 
         <div className="mt-12 border-t border-line pt-6">
           <p className="max-w-3xl text-xs leading-relaxed text-muted">
-            Untrace is an independent, non-commercial prototype. Scans in this
-            build run against a curated directory of real public data-broker
-            opt-out pages and illustrate what a live scan would return. Removal
-            links open each company&apos;s own opt-out page; emails are drafted
-            for you to review before anything is sent. Scans are computed on the
-            fly and never stored.
+            Untrace helps you locate exposed personal listings across public data
+            brokers and send formal deletion notices. Removal links open each
+            company&apos;s own opt-out page; emails are drafted for you to review
+            and approve before anything is sent.
           </p>
           <div className="mt-5 flex flex-col gap-2 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
             <p>© {new Date().getFullYear()} Untrace. Made for people, not profiles.</p>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.75rem]">
+              <Link href="/privacy" className="transition-colors hover:text-ink">
+                Privacy Policy
+              </Link>
+              <span aria-hidden>·</span>
+              <Link href="/terms" className="transition-colors hover:text-ink">
+                Terms of Service
+              </Link>
+              <span aria-hidden>·</span>
               <a href={SITE_URL} className="transition-colors hover:text-ink">
                 {SITE_DOMAIN}
               </a>
