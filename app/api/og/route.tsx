@@ -15,14 +15,20 @@ const SAND = "#E9E1D2";
 const GREY = "#CDC8BA";
 
 async function loadFont(file: string, origin: string): Promise<ArrayBuffer> {
+  // The woff files are traced into the function (see next.config.ts), so
+  // reading them locally is the reliable path. The origin fetch is a fallback.
   try {
-    const response = await fetch(new URL(`/fonts/${file}`, origin));
-    if (response.ok) return await response.arrayBuffer();
+    const buffer = await readFile(path.join(process.cwd(), "public", "fonts", file));
+    return buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength,
+    ) as ArrayBuffer;
   } catch {
-    /* fall through to the filesystem */
+    /* fall through to the network */
   }
-  const buffer = await readFile(path.join(process.cwd(), "public", "fonts", file));
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+  const response = await fetch(new URL(`/fonts/${file}`, origin));
+  if (!response.ok) throw new Error(`Could not load font ${file}`);
+  return await response.arrayBuffer();
 }
 
 function TraceMark() {
@@ -118,15 +124,15 @@ export async function GET(request: Request) {
           </div>
 
           {/* Headline */}
-          <div style={{ display: "flex", flexDirection: "column", maxWidth: 850 }}>
-            <div style={{ fontFamily: "Instrument Serif", fontSize: 78, lineHeight: 1.05, letterSpacing: "-0.02em", color: INK }}>
-              Every place the internet
+          <div style={{ display: "flex", flexDirection: "column", maxWidth: 1000 }}>
+            <div style={{ fontFamily: "Instrument Serif", fontSize: 76, lineHeight: 1.05, letterSpacing: "-0.02em", color: INK }}>
+              45 sites sell your address
             </div>
-            <div style={{ fontFamily: "Instrument Serif", fontSize: 78, lineHeight: 1.05, letterSpacing: "-0.02em", color: INK }}>
-              keeps your data.
+            <div style={{ fontFamily: "Instrument Serif", fontSize: 76, lineHeight: 1.05, letterSpacing: "-0.02em", color: INK }}>
+              to anyone who asks.
             </div>
-            <div style={{ fontFamily: "Instrument Serif", fontSize: 78, lineHeight: 1.05, letterSpacing: "-0.02em", color: MUTED }}>
-              In one calm list.
+            <div style={{ fontFamily: "Instrument Serif", fontSize: 76, lineHeight: 1.05, letterSpacing: "-0.02em", color: MUTED }}>
+              We write to all 45.
             </div>
           </div>
 
@@ -145,7 +151,7 @@ export async function GET(request: Request) {
               <div style={{ fontSize: 23, fontWeight: 500, color: INK_SOFT }}>{SITE_DOMAIN}</div>
             </div>
             <div style={{ fontSize: 21, color: MUTED }}>
-              45 sources checked. One deletion request each.
+              No account. Nothing sent without you.
             </div>
           </div>
         </div>

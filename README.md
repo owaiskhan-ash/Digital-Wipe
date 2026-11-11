@@ -1,6 +1,8 @@
 # Untrace
 
-Find every trace of your personal data online, then ask each owner to delete it.
+45 sites sell your address to anyone who asks. Untrace finds every listing that
+holds your name, street and phone number, then writes the deletion request that
+takes you off each one.
 
 **Live:** [untrace.justsimpleapps.online](https://untrace.justsimpleapps.online)
 

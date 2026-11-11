@@ -6,13 +6,13 @@ import { SiteFooter } from "@/components/site-footer";
 import { ScanFlow } from "@/components/scan/scan-flow";
 
 export const metadata: Metadata = {
-  title: "Start a free scan",
+  title: "Check the 45 sites selling your address",
   description:
-    "Check 45 people-search sites, marketing databases and ad profiles for your name, address and phone number. Free, no account, results in seconds.",
+    "One free check across 45 people-search sites, marketing databases and ad profiles. See every listing that holds your name, address and phone number, and who to write to about it.",
   alternates: { canonical: "/scan" },
   openGraph: {
     url: "/scan",
-    title: "Start a free scan | Untrace",
+    title: "Check the 45 sites selling your address | Untrace",
     description:
       "See which directories publish your name, address and phone number, and who to write to about it.",
     images: [
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Untrace: every place the internet keeps your data, in one calm list",
+        alt: "Untrace: 45 sites sell your address to anyone who asks, we write the deletion request for all 45",
       },
     ],
   },
