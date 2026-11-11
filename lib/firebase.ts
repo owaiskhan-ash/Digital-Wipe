@@ -1,8 +1,10 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   type User,
 } from "firebase/auth";
@@ -24,15 +26,52 @@ const firestoreDatabaseId =
 export const db: Firestore = getFirestore(app, firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// In-memory access token cache for Google Workspace APIs (never stored in localStorage)
-let cachedAccessToken: string | null = null;
+// In-memory access token cache for Google Workspace APIs (never stored in localStorage).
+// Google access tokens live about an hour, so the cache carries its own deadline
+// rather than handing out a token that the Gmail API will reject with a 401.
+const TOKEN_TTL_MS = 50 * 60 * 1000;
+let cachedAccessToken: { token: string; expiresAt: number } | null = null;
 
 export function getCachedAccessToken(): string | null {
-  return cachedAccessToken;
+  if (!cachedAccessToken) return null;
+  if (Date.now() >= cachedAccessToken.expiresAt) {
+    cachedAccessToken = null;
+    return null;
+  }
+  return cachedAccessToken.token;
 }
 
 export function setCachedAccessToken(token: string | null) {
-  cachedAccessToken = token;
+  cachedAccessToken = token ? { token, expiresAt: Date.now() + TOKEN_TTL_MS } : null;
+}
+
+export function clearGmailToken() {
+  cachedAccessToken = null;
+}
+
+/** Thrown when Google is still redirecting back; the caller just explains it. */
+export class RedirectInProgress extends Error {
+  constructor() {
+    super(
+      "Google is asking for permission to send from your account. The page will reload in a moment, then press Send again."
+    );
+    this.name = "RedirectInProgress";
+  }
+}
+
+/**
+ * Popups are refused by most mobile browsers and by many desktop ones after the
+ * first one. When that happens the provider falls back to a full redirect, which
+ * finishes on the way back in through consumeRedirectResult().
+ */
+function isPopupUnavailable(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code ?? "";
+  return [
+    "auth/popup-blocked",
+    "auth/popup-closed-by-user",
+    "auth/cancelled-popup-request",
+    "auth/operation-not-supported-in-this-environment",
+  ].includes(code);
 }
 
 // Basic provider for 1-click website login (only openid, email, profile, avoids 403 on initial login)
@@ -46,12 +85,38 @@ gmailGoogleProvider.addScope("https://www.googleapis.com/auth/gmail.send");
 
 export async function signInWithGoogle(
   includeGmailScope = false
-): Promise<{ user: User; accessToken: string | null }> {
+): Promise<{ user: User | null; accessToken: string | null }> {
   const provider = includeGmailScope ? gmailGoogleProvider : basicGoogleProvider;
-  const result = await signInWithPopup(auth, provider);
+
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken ?? null;
+    if (token) {
+      setCachedAccessToken(token);
+    }
+    return { user: result.user, accessToken: token };
+  } catch (err) {
+    if (!isPopupUnavailable(err)) throw err;
+    await signInWithRedirect(auth, provider);
+    return { user: null, accessToken: null };
+  }
+}
+
+/**
+ * Completes a redirect sign-in. Called once when the app starts so the Gmail
+ * token from the round trip is already cached when the user presses Send.
+ */
+export async function consumeRedirectResult(): Promise<{
+  user: User | null;
+  accessToken: string | null;
+}> {
+  const result = await getRedirectResult(auth);
+  if (!result) return { user: null, accessToken: null };
+
   const credential = GoogleAuthProvider.credentialFromResult(result);
   const token = credential?.accessToken ?? null;
-  if (token && includeGmailScope) {
+  if (token) {
     setCachedAccessToken(token);
   }
   return { user: result.user, accessToken: token };
@@ -63,13 +128,22 @@ export async function signOutUser() {
 }
 
 export async function ensureGmailToken(): Promise<string> {
-  if (cachedAccessToken) {
-    return cachedAccessToken;
-  }
-  // Request Gmail send scope when the user actually sends an email via Gmail API
-  const { accessToken } = await signInWithGoogle(true);
+  const cached = getCachedAccessToken();
+  if (cached) return cached;
+
+  // A redirect sign-in may have completed on the way into this page.
+  const fromRedirect = await consumeRedirectResult();
+  if (fromRedirect.accessToken) return fromRedirect.accessToken;
+
+  // Ask for the send scope at the moment of sending, not at sign-in.
+  const { accessToken, user } = await signInWithGoogle(true);
   if (!accessToken) {
-    throw new Error("Unable to obtain Gmail authorization token. Please sign in again.");
+    // Either the browser redirected (it is already navigating away) or Google
+    // returned a session without an access token.
+    throw new RedirectInProgress();
+  }
+  if (!user) {
+    throw new Error("Google did not return an account. Please sign in again.");
   }
   return accessToken;
 }

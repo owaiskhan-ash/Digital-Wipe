@@ -33,7 +33,7 @@ import {
 import { DATA_LABELS } from "@/lib/types";
 import { addDays, cn, copyText, formatDate } from "@/lib/utils";
 import { CategoryPill, RiskBadge } from "@/components/ui";
-import { sendEmailViaGmail } from "@/lib/gmail";
+import { describeSendError, sendEmailViaGmail } from "@/lib/gmail";
 
 export type ComposerSeed = {
   finding: Finding;
@@ -240,11 +240,16 @@ export function Composer({
       persist("sent");
     } catch (err: unknown) {
       console.error("Gmail send error:", err);
-      setGmailError(
-        err instanceof Error
-          ? err.message
-          : "Failed to send email. Please check your connection and Gmail permissions."
-      );
+      const message = err instanceof Error ? err.message : String(err ?? "");
+
+      // A stale or scope-less token cannot recover on its own: drop it so the
+      // next press of Send asks Google again instead of replaying the failure.
+      if (/401|Invalid Credentials|insufficient|expired/i.test(message)) {
+        const fb = await import("@/lib/firebase");
+        fb.clearGmailToken();
+      }
+
+      setGmailError(describeSendError(err));
     } finally {
       setIsSendingGmail(false);
     }
