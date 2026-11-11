@@ -9,7 +9,7 @@ import {
   Send,
   SlidersHorizontal,
 } from "lucide-react";
-import type { Category, Finding, Risk } from "@/lib/types";
+import type { Category, Finding, RequestStatus, Risk } from "@/lib/types";
 import { CATEGORIES, DATA_LABELS } from "@/lib/types";
 import { cn, formatDate, plural, relativeDays } from "@/lib/utils";
 import { CategoryPill, EffortNote, RiskBadge } from "@/components/ui";
@@ -24,11 +24,21 @@ const RISKS: Array<{ id: Risk | "all"; label: string }> = [
 
 const CATEGORY_IDS = Object.keys(CATEGORIES) as Category[];
 
+const REQUEST_CHIP: Record<RequestStatus, { label: string; className: string }> = {
+  drafted: { label: "Draft saved", className: "border-line bg-mist text-muted" },
+  sent: { label: "Requested", className: "border-moss/25 bg-moss-soft text-moss" },
+  confirmed: { label: "Acknowledged", className: "border-lilac/25 bg-lilac-soft text-lilac" },
+  removed: { label: "Removed", className: "border-moss/30 bg-moss-soft text-moss" },
+  refused: { label: "Refused", className: "border-clay/25 bg-clay-soft text-clay" },
+};
+
 export function FindingsPanel({
   findings,
+  statuses,
   onCompose,
 }: {
   findings: Finding[];
+  statuses: Record<string, RequestStatus>;
   onCompose: (seeds: ComposerSeed[]) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -197,6 +207,7 @@ export function FindingsPanel({
             key={finding.id}
             finding={finding}
             selected={selected.includes(finding.id)}
+            status={statuses[finding.id]}
             onToggle={() => toggle(finding.id)}
             onCompose={() => onCompose([{ finding }])}
           />
@@ -218,11 +229,13 @@ export function FindingsPanel({
 function FindingRow({
   finding,
   selected,
+  status,
   onToggle,
   onCompose,
 }: {
   finding: Finding;
   selected: boolean;
+  status?: RequestStatus;
   onToggle: () => void;
   onCompose: () => void;
 }) {
@@ -264,6 +277,16 @@ function FindingRow({
             </h3>
             <span className="text-xs text-muted">{finding.domain}</span>
             <RiskBadge risk={finding.risk} className="ml-auto" />
+            {status ? (
+              <span
+                className={cn(
+                  "rounded-full border px-2 py-1 text-[0.6875rem] font-medium",
+                  REQUEST_CHIP[status].className,
+                )}
+              >
+                {REQUEST_CHIP[status].label}
+              </span>
+            ) : null}
           </div>
 
           <p className="mt-2 max-w-2xl text-[0.8125rem] leading-relaxed text-muted">

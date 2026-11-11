@@ -61,6 +61,14 @@ export function DashboardView() {
     };
   }, [scan, requests]);
 
+  const statuses = useMemo(
+    () =>
+      Object.fromEntries(
+        requests.map((request) => [request.findingId, request.status]),
+      ) as Record<string, (typeof requests)[number]["status"]>,
+    [requests],
+  );
+
   const isSample =
     scan?.profile.fullName === SAMPLE_PROFILE.fullName &&
     scan?.profile.city === SAMPLE_PROFILE.city;
@@ -316,6 +324,7 @@ export function DashboardView() {
             scan.findings.length > 0 ? (
               <FindingsPanel
                 findings={scan.findings}
+                statuses={statuses}
                 onCompose={(nextSeeds) => setSeeds(nextSeeds)}
               />
             ) : (
