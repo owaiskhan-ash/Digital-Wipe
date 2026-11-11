@@ -76,6 +76,14 @@
   html {
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
+    /* Nothing may widen the page on a phone. `clip` stops the sideways scroll
+       without turning the root into a scroll container, so sticky headers and
+       the fixed dock keep working. Elements that need their own scrolling
+       (the legal table, chip strips) still declare overflow-x-auto. */
+    max-width: 100%;
+    overflow-x: clip;
+    /* No rubber-band sideways drift in iOS Safari either. */
+    overscroll-behavior-x: none;
   }
 
   body {
@@ -85,6 +93,21 @@
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  /* A URL or an address with no spaces to break at must wrap, not stretch its
+     container past the viewport. */
+  :where(p, dd, dt, h1, h2, h3, h4, li, span, td, th) {
+    overflow-wrap: anywhere;
+  }
+
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100%;
   }
 
   ::selection {

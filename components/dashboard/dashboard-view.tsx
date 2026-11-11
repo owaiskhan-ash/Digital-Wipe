@@ -210,13 +210,13 @@ export function DashboardView() {
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted">
               {scan.profile.phones.length > 0 && (
-                <span className="inline-flex items-center gap-1 font-mono text-ink">
+                <span className="inline-flex min-w-0 items-center gap-1 font-mono text-ink [overflow-wrap:anywhere]">
                   <Phone className="size-3.5 text-moss" />
                   {scan.profile.phones.join(", ")}
                 </span>
               )}
               {scan.profile.emails.length > 0 && (
-                <span className="inline-flex items-center gap-1 font-mono text-ink">
+                <span className="inline-flex min-w-0 items-center gap-1 font-mono text-ink [overflow-wrap:anywhere]">
                   <Mail className="size-3.5 text-moss" />
                   {scan.profile.emails.join(", ")}
                 </span>

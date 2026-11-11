@@ -13,7 +13,7 @@ const NAV = [
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-md">
-      <div className="container-page flex h-[4.5rem] items-center justify-between gap-6">
+      <div className="container-page flex h-16 items-center justify-between gap-4 md:h-[4.5rem] md:gap-6">
         <Logo />
 
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">

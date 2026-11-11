@@ -80,7 +80,7 @@ export function MobileShell() {
     <div className="md:hidden">
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-line/80 bg-paper/95 backdrop-blur-md"
+        className="fixed inset-x-0 bottom-0 z-50 max-w-[100vw] overflow-x-hidden border-t border-line/80 bg-paper/95 backdrop-blur-md"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="mx-auto flex max-w-md items-stretch justify-around px-2">
@@ -152,7 +152,7 @@ export function MobileShell() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-5">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-5">
               <Link
                 href="/scan"
                 className="btn btn-primary w-full"
