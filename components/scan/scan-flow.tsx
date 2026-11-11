@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
-  Bot,
   Check,
   ChevronDown,
   Globe,
   Loader2,
   Lock,
   MailCheck,
-  Radar,
   ScanLine,
+  Search,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -22,24 +21,20 @@ import type { BreachExposure, Finding, ScanResult, SwarmAgentReport } from "@/li
 
 const STAGES = [
   {
-    label: "Agent 01 · Global Directory & Public Records Scout",
-    detail: "Searching open-web people directories, caller-ID & regional registries",
+    label: "Step 01 · Understanding Search Intent",
+    detail: "Preparing your identity markers, region, and custom search instructions",
   },
   {
-    label: "Agent 02 · B2B, Lead-Gen & Broker Hunter",
-    detail: "Querying commercial contact brokers, recruiter indexes & email lists",
+    label: "Step 02 · Gemini 3.8 Flash Web Discovery",
+    detail: "Finding people-search sites, caller-ID apps, B2B brokers & public directories",
   },
   {
-    label: "Agent 03 · Open-Web Footprint & Archive Crawler",
-    detail: "Scanning search engines, username scrapers, social mirrors & web caches",
+    label: "Step 03 · Resolving Privacy & DPO Emails",
+    detail: "Matching each website with its verified privacy@, dpo@, or grievance email",
   },
   {
-    label: "Agent 04 · DPO & Privacy Contact Resolver",
-    detail: "Resolving verified privacy@, dpo@, and grievance officer emails",
-  },
-  {
-    label: "Swarm Coordinator · Synthesizing Removal Queue",
-    detail: "Deduplicating web exposures & preparing 1-click Gmail deletion notices",
+    label: "Step 04 · Preparing 1-Click Removal Queue",
+    detail: "Drafting statutory deletion notices (GDPR, CCPA, DPDP) ready for Gmail",
   },
 ];
 
@@ -81,14 +76,11 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const router = useRouter();
   const { saveScan } = useStore();
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, emails: initialEmail });
-  const [useSwarm, setUseSwarm] = useState(true);
+  const [useGemini, setUseGemini] = useState(true);
   const [agreed, setAgreed] = useState(false);
   const [status, setStatus] = useState<"idle" | "running" | "error">("idle");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(0);
-
-  const resultRef = useRef<ScanResult | null>(null);
-  const finishing = useRef(false);
 
   const update = (key: keyof FormState) => (value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -96,24 +88,21 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   useEffect(() => {
     if (status !== "running") return;
     const timer = window.setInterval(() => {
-      setProgress((current) =>
-        Math.min(95, current + (useSwarm ? 0.85 : 1.8) + Math.random() * 1.3)
-      );
+      setProgress((current) => {
+        if (current >= 92) return current;
+        return Math.min(92, current + 2.4 + Math.random() * 1.8);
+      });
     }, 120);
     return () => window.clearInterval(timer);
-  }, [status, useSwarm]);
+  }, [status]);
 
-  useEffect(() => {
-    if (status !== "running" || !resultRef.current || progress < 95) return;
-    if (finishing.current) return;
-    finishing.current = true;
+  const finishScanAndNavigate = (scanResult: ScanResult) => {
     setProgress(100);
-    const timer = window.setTimeout(() => {
-      if (resultRef.current) saveScan(resultRef.current);
+    saveScan(scanResult);
+    window.setTimeout(() => {
       router.push("/dashboard");
-    }, 380);
-    return () => window.clearTimeout(timer);
-  }, [progress, status, saveScan, router]);
+    }, 220);
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -126,7 +115,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       return;
     }
     if (form.city.trim().length < 2) {
-      setError("Please add a city so the agents can disambiguate common names.");
+      setError("Please add a city so Gemini can disambiguate common names.");
       return;
     }
     if (form.emails && !/\S+@\S+\.\S+/.test(form.emails)) {
@@ -136,9 +125,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
     setError("");
     setStatus("running");
-    setProgress(0);
-    finishing.current = false;
-    resultRef.current = null;
+    setProgress(8);
 
     const cleanProfile = {
       fullName: form.fullName.trim(),
@@ -160,9 +147,8 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     };
 
     try {
-      if (useSwarm) {
-        // Primary Open-Web AI Agent Swarm reconnaissance
-        const swarmResponse = await fetch("/api/swarm", {
+      if (useGemini) {
+        const geminiResponse = await fetch("/api/swarm", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -171,7 +157,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           }),
         });
 
-        const swarmPayload = (await swarmResponse.json().catch(() => ({}))) as {
+        const payload = (await geminiResponse.json().catch(() => ({}))) as {
           findings?: Finding[];
           reports?: SwarmAgentReport[];
           breaches?: BreachExposure[];
@@ -179,30 +165,28 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           error?: string;
         };
 
-        if (!swarmResponse.ok) {
+        if (!geminiResponse.ok) {
           throw new Error(
-            swarmPayload.error || "The AI Agent Swarm encountered an error while scanning the web."
+            payload.error || "Gemini 3.8 Flash encountered an error while finding your exposures."
           );
         }
 
-        const swarmFindings = swarmPayload.findings ?? [];
-        const swarmReports = swarmPayload.reports ?? [];
+        const findings = payload.findings ?? [];
+        const reports = payload.reports ?? [];
 
-        resultRef.current = {
+        finishScanAndNavigate({
           id: `scan_${Date.now().toString(36)}`,
           createdAt: new Date().toISOString(),
           profile: cleanProfile,
-          checked: swarmPayload.checked ?? Math.max(swarmFindings.length * 4, 24),
-          findings: swarmFindings,
-          breaches: swarmPayload.breaches ?? [],
-          swarmReports,
+          checked: payload.checked ?? Math.max(findings.length * 4, 24),
+          findings,
+          breaches: payload.breaches ?? [],
+          swarmReports: reports,
           demo: false,
-        };
-        setProgress((current) => Math.max(current, 95));
+        });
         return;
       }
 
-      // Fallback static directory scan if user unchecked AI Agent Swarm
       const response = await fetch("/api/scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -215,8 +199,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       }
 
       const payload = (await response.json()) as { scan: ScanResult };
-      resultRef.current = payload.scan;
-      setProgress((current) => Math.max(current, 95));
+      finishScanAndNavigate(payload.scan);
     } catch (cause) {
       setStatus("error");
       setError(cause instanceof Error ? cause.message : "Something interrupted the scan.");
@@ -224,7 +207,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   };
 
   if (status === "running") {
-    const stageIndex = Math.min(STAGES.length - 1, Math.floor(progress / 20));
+    const stageIndex = Math.min(STAGES.length - 1, Math.floor(progress / 25));
     const currentStage = STAGES[stageIndex];
 
     return (
@@ -237,13 +220,11 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="inline-flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-[0.2em] text-moss-deep">
-                <Radar className="size-3.5 animate-spin text-moss" />
-                {useSwarm ? "Open-Web AI Agent Swarm Active" : "Scanning"}
+                <Sparkles className="size-3.5 animate-pulse text-moss" />
+                {useGemini ? "Gemini 3.8 Flash Active" : "Scanning"}
               </p>
               <h2 className="mt-2 font-display text-[1.9rem] leading-tight">
-                {useSwarm
-                  ? `Searching the open web for ${form.fullName.trim()}.`
-                  : "Looking for you, quietly."}
+                Finding exposures for {form.fullName.trim()}.
               </h2>
             </div>
             <span className="font-display text-3xl tabular-nums text-moss">
@@ -253,14 +234,14 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
           <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-mist">
             <div
-              className="h-full rounded-full bg-moss transition-[width] duration-300 ease-out"
+              className="h-full rounded-full bg-moss transition-[width] duration-200 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>
 
           <ol className="mt-8 space-y-4">
             {STAGES.map((stage, index) => {
-              const done = progress >= (index + 1) * 20;
+              const done = progress >= (index + 1) * 25;
               const active = index === stageIndex && !done;
               return (
                 <li key={stage.label} className="flex items-start gap-3">
@@ -302,7 +283,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         <aside className="flex flex-col gap-5">
           <div className="card flex-1 p-7">
             <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
-              Active Reconnaissance Task
+              Current Step
             </p>
             <p className="mt-3 font-display text-[1.55rem] leading-tight">
               {currentStage.label}
@@ -313,24 +294,24 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               <div className="flex items-center justify-between text-ink-soft">
                 <span className="flex items-center gap-1.5 font-medium">
                   <Globe className="size-3.5 text-moss" />
-                  Target Identity
+                  Target Profile
                 </span>
                 <span className="truncate font-mono text-[0.7rem] text-ink">
                   {form.fullName} · {form.city}, {form.country}
                 </span>
               </div>
               <div className="flex items-center justify-between text-muted">
-                <span>Search Scope</span>
-                <span className="text-moss-deep font-medium">Entire Open Internet (Google Grounded)</span>
+                <span>AI Engine</span>
+                <span className="text-moss-deep font-medium">Gemini 3.8 Flash</span>
               </div>
             </div>
 
             <div className="mt-7 border-t border-line pt-5">
               <p className="flex items-start gap-2 text-xs leading-relaxed text-muted">
-                <Bot className="mt-0.5 size-3.5 shrink-0 text-moss" strokeWidth={1.7} aria-hidden />
-                4 specialized Gemini AI agents are querying Google Search in parallel to find
-                websites holding this person&apos;s data and resolve each site&apos;s privacy officer
-                (DPO) email address.
+                <Sparkles className="mt-0.5 size-3.5 shrink-0 text-moss" strokeWidth={1.7} aria-hidden />
+                Gemini 3.8 Flash is finding the directories, caller-ID databases, and B2B
+                contact brokers that match your search intent and resolving each site&apos;s
+                privacy officer email.
               </p>
             </div>
           </div>
@@ -338,8 +319,8 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           <div className="rounded-2xl border border-line bg-moss-soft/70 p-5">
             <p className="flex items-start gap-2 text-xs leading-relaxed text-moss-deep">
               <ScanLine className="mt-0.5 size-4 shrink-0" strokeWidth={1.7} aria-hidden />
-              Not limited to fixed directories—our agents discover regional databases, caller-ID
-              apps, B2B lead brokers, and web archives anywhere on the internet.
+              Every discovered site includes a verified privacy@, dpo@, or grievance email
+              so you can send deletion requests in one click.
             </p>
           </div>
         </aside>
@@ -426,7 +407,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               />
             </div>
             <p className="mt-1.5 text-xs text-muted">
-              Guides regional web discovery and sets the privacy law (GDPR, CCPA, DPDP) cited in
+              Guides regional discovery and sets the privacy law (GDPR, CCPA, DPDP) cited in
               removal emails.
             </p>
           </div>
@@ -447,8 +428,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               inputMode="email"
             />
             <p className="mt-1.5 text-xs text-muted">
-              Separate with commas. Used by the B2B &amp; Breach agents to locate exposed contact
-              profiles.
+              Separate with commas. Helps locate exposed B2B and directory profiles.
             </p>
           </div>
 
@@ -483,35 +463,36 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
           <div>
             <label className="label" htmlFor="customQuery">
-              Extra search hints for AI Agents (optional)
+              What are you looking to find or remove? (optional)
             </label>
             <input
               id="customQuery"
               className="field"
               value={form.customQuery}
               onChange={(event) => update("customQuery")(event.target.value)}
-              placeholder="e.g. company name, profession, old city, or specific website"
+              placeholder="e.g. phone directories, B2B work email brokers, company name, or specific websites"
             />
             <p className="mt-1.5 text-xs text-muted">
-              Helps the AI Swarm narrow down results across the internet for common names.
+              Tell Gemini 3.8 Flash exactly what kind of exposure or context you want it to
+              prioritize.
             </p>
           </div>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-moss/30 bg-moss-soft/60 p-4">
             <input
               type="checkbox"
-              checked={useSwarm}
-              onChange={(event) => setUseSwarm(event.target.checked)}
+              checked={useGemini}
+              onChange={(event) => setUseGemini(event.target.checked)}
               className="mt-0.5 size-4 shrink-0 accent-[var(--color-moss)]"
             />
             <span className="text-xs leading-relaxed text-ink-soft">
               <strong className="inline-flex items-center gap-1.5 font-medium text-moss-deep">
                 <Sparkles className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
-                Open-Web AI Agent Swarm (Searches Across the Entire Internet)
+                Powered by Gemini 3.8 Flash (Fast Open-Web Discovery)
               </strong>
               <span className="mt-1 block text-muted">
-                Deploys 4 Gemini AI agents with live Google Search grounding to find websites,
-                directories, B2B databases, and public archives anywhere on the internet—and
+                Uses a single fast Gemini 3.8 Flash pass to find the websites, people
+                directories, caller-ID databases, and B2B brokers exposing your data—and
                 resolves each company&apos;s privacy/DPO email for 1-click removal.
               </span>
             </span>
@@ -543,11 +524,11 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
         <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-6">
           <button type="submit" className="btn btn-primary" disabled={!agreed}>
-            {useSwarm ? "Deploy AI Agent Swarm" : "Run directory scan"}
+            {useGemini ? "Find Exposures with Gemini 3.8 Flash" : "Run directory scan"}
             <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </button>
           <span className="text-xs text-muted sm:ml-auto">
-            {useSwarm ? "Live Google Search across the internet (~10–15s)" : "About 5 seconds"}
+            {useGemini ? "Fast single-pass AI search (~3–5 seconds)" : "About 5 seconds"}
           </span>
         </div>
       </div>
@@ -555,24 +536,24 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       <aside className="space-y-5">
         <div className="card p-6 md:p-7">
           <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
-            How the AI Swarm works
+            How Gemini 3.8 Flash works
           </p>
           <ol className="mt-5 space-y-5">
             {[
               {
-                icon: Bot,
-                title: "4 Agents Search the Whole Web",
-                body: "Not restricted to 45 sites—agents search Google live for global & regional directories, caller-ID apps, B2B lead brokers, and web archives.",
+                icon: Search,
+                title: "Finds What You Are Looking For",
+                body: "Searches across regional & global people directories, caller-ID apps, B2B contact brokers, and public records tailored to your country and search hints.",
               },
               {
                 icon: ShieldCheck,
                 title: "Resolves DPO & Privacy Emails",
-                body: "For every site discovered, our DPO Resolver agent finds the official privacy@, dpo@, or grievance officer email address.",
+                body: "For every website found, Gemini provides the official privacy@, dpo@, or grievance officer email address.",
               },
               {
                 icon: MailCheck,
                 title: "1-Click Gmail Removal Queue",
-                body: "Generates legal deletion emails (GDPR, CCPA, DPDP) for every discovered site so you can send them straight from your connected Gmail.",
+                body: "Generates legal deletion emails (GDPR, CCPA, DPDP) for every discovered site so you can send them straight from your Gmail.",
               },
             ].map((item) => (
               <li key={item.title} className="flex gap-3">

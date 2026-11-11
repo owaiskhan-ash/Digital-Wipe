@@ -216,7 +216,7 @@ export function DashboardView() {
 
   const tabs: Array<{ id: Tab; label: string; count: number }> = [
     { id: "findings", label: "Findings", count: scan.findings.length },
-    { id: "swarm", label: "AI Agent Swarm", count: swarmFindingsCount },
+    { id: "swarm", label: "Gemini 3.8 Flash", count: swarmFindingsCount },
     { id: "breaches", label: "Breaches", count: scan.breaches.length },
     { id: "requests", label: "Requests", count: requests.length },
   ];
@@ -251,7 +251,7 @@ export function DashboardView() {
               className="btn btn-primary btn-sm"
             >
               <Bot className="size-3.5" strokeWidth={1.8} aria-hidden />
-              AI Agent Swarm
+              Gemini 3.8 Flash
             </button>
             <Link href="/scan" className="btn btn-secondary btn-sm">
               <RefreshCw className="size-3.5" strokeWidth={1.8} aria-hidden />

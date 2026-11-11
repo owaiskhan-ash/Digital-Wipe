@@ -3,13 +3,9 @@
 import { useState } from "react";
 import {
   AlertCircle,
-  Bot,
-  Check,
   ExternalLink,
-  Globe,
   Loader2,
   Mail,
-  Radar,
   RefreshCw,
   Search,
   Send,
@@ -20,40 +16,12 @@ import type {
   Finding,
   Profile,
   RequestStatus,
-  SwarmAgentId,
   SwarmAgentReport,
 } from "@/lib/types";
 import { DATA_LABELS } from "@/lib/types";
-import { cn, plural } from "@/lib/utils";
+import { plural } from "@/lib/utils";
 import { CategoryPill, RiskBadge } from "@/components/ui";
 import type { ComposerSeed } from "./composer";
-
-const DEFAULT_AGENTS: Array<{
-  agentId: SwarmAgentId;
-  agentName: string;
-  role: string;
-}> = [
-  {
-    agentId: "directories",
-    agentName: "Directory & People-Search Recon",
-    role: "Scans residential directories, whitepages, property & voter aggregators",
-  },
-  {
-    agentId: "b2b-brokers",
-    agentName: "B2B & Marketing Broker Hunter",
-    role: "Tracks commercial lead databases, B2B contact brokers & email lists",
-  },
-  {
-    agentId: "social-archives",
-    agentName: "Footprint & Web Archive Crawler",
-    role: "Searches usernames, cached pages, search indexes & public mentions",
-  },
-  {
-    agentId: "dpo-resolver",
-    agentName: "Privacy Desk & DPO Resolver",
-    role: "Finds verified privacy officer emails & statutory opt-out endpoints",
-  },
-];
 
 export function SwarmPanel({
   profile,
@@ -75,11 +43,10 @@ export function SwarmPanel({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customQuery, setCustomQuery] = useState("");
-  const [expandedAgent, setExpandedAgent] = useState<SwarmAgentId | null>(null);
 
-  const swarmFindings = findings.filter((f) => Boolean(f.discoveredByAgent));
+  const aiFindings = findings.filter((f) => Boolean(f.discoveredByAgent));
 
-  const runSwarm = async () => {
+  const runGeminiSearch = async () => {
     setRunning(true);
     setError(null);
 
@@ -102,7 +69,7 @@ export function SwarmPanel({
 
       if (!response.ok) {
         throw new Error(
-          data.error || "The AI Agent Swarm encountered an error while scanning the web."
+          data.error || "Gemini 3.8 Flash encountered an error while searching."
         );
       }
 
@@ -111,84 +78,83 @@ export function SwarmPanel({
       onMergeSwarmResults(discovered, reports);
       onToast(
         discovered.length > 0
-          ? `AI Swarm discovered ${plural(discovered.length, "removal target")} with privacy emails.`
-          : "AI Swarm completed live web reconnaissance."
+          ? `Gemini 3.8 Flash found ${plural(discovered.length, "removal target")} with privacy emails.`
+          : "Gemini 3.8 Flash completed your search."
       );
     } catch (err: unknown) {
       setError(
         err instanceof Error
           ? err.message
-          : "Could not complete the AI Swarm scan. Please try again."
+          : "Could not complete the Gemini 3.8 Flash search. Please try again."
       );
     } finally {
       setRunning(false);
     }
   };
 
-  const unrequestedSwarmFindings = swarmFindings.filter((f) => !statuses[f.id]);
+  const unrequestedAiFindings = aiFindings.filter((f) => !statuses[f.id]);
 
   return (
     <div className="space-y-6">
-      {/* Command Center Banner */}
+      {/* Gemini 3.8 Flash Search Header */}
       <div className="card overflow-hidden border-moss/30">
         <div className="bg-moss-soft/50 px-6 py-6 md:px-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-moss/25 bg-surface px-3 py-1 text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-moss-deep">
-                <Radar className={cn("size-3.5 text-moss", running && "animate-spin")} />
-                Open-Web Multi-Agent Reconnaissance
+                <Sparkles className="size-3.5 text-moss" />
+                Powered by Gemini 3.8 Flash
               </div>
               <h2 className="mt-3 text-[1.75rem] leading-tight text-ink sm:text-[2rem]">
-                AI Agent Swarm for{" "}
+                Find &amp; Remove Exposures for{" "}
                 <span className="text-moss-deep">{profile.fullName}</span>
               </h2>
               <p className="mt-2 text-xs leading-relaxed text-ink-soft sm:text-sm">
-                4 autonomous Gemini agents search across the entire internet using live
-                Google Search—discovering directories, caller-ID apps, B2B lead databases,
-                social archives, and official DPO emails so you can send removal notices in
-                one click.
+                Tell Gemini 3.8 Flash what you want to look for—people directories,
+                caller-ID databases, B2B work email brokers, or regional registries—and
+                get a ready-to-send removal list with each site&apos;s privacy officer email.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 shrink-0">
-              {swarmFindings.length > 0 && (
+              {aiFindings.length > 0 && (
                 <button
                   type="button"
                   onClick={() =>
                     onCompose(
-                      (unrequestedSwarmFindings.length > 0
-                        ? unrequestedSwarmFindings
-                        : swarmFindings
+                      (unrequestedAiFindings.length > 0
+                        ? unrequestedAiFindings
+                        : aiFindings
                       ).map((finding) => ({ finding }))
                     )
                   }
                   className="btn btn-secondary btn-sm"
                 >
                   <Mail className="size-4 text-moss" strokeWidth={1.8} />
-                  Email all {swarmFindings.length} swarm targets
+                  Email all {aiFindings.length} targets
                 </button>
               )}
 
               <button
                 type="button"
-                onClick={runSwarm}
+                onClick={runGeminiSearch}
                 disabled={running}
                 className="btn btn-primary flex items-center gap-2"
               >
                 {running ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
-                    Swarm searching live web...
+                    Gemini 3.8 Flash searching...
                   </>
-                ) : swarmReports.length > 0 ? (
+                ) : swarmReports.length > 0 || aiFindings.length > 0 ? (
                   <>
                     <RefreshCw className="size-4" strokeWidth={1.8} />
-                    Find More Across the Web
+                    Find More with Gemini 3.8 Flash
                   </>
                 ) : (
                   <>
                     <Sparkles className="size-4" strokeWidth={1.8} />
-                    Deploy AI Agent Swarm
+                    Search with Gemini 3.8 Flash
                   </>
                 )}
               </button>
@@ -208,10 +174,10 @@ export function SwarmPanel({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !running) {
                     e.preventDefault();
-                    runSwarm();
+                    runGeminiSearch();
                   }
                 }}
-                placeholder="Optional focus for next sweep: e.g. employer, profession, phone directory, old city, or specific website..."
+                placeholder="What are you looking to find? (e.g. phone number directories, B2B email brokers, employer, or specific sites)..."
                 className="field bg-surface pl-10 text-xs"
                 disabled={running}
               />
@@ -225,123 +191,18 @@ export function SwarmPanel({
             </div>
           )}
         </div>
-
-        {/* 4 Autonomous Agent Cards */}
-        <div className="grid divide-y divide-line border-t border-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
-          {DEFAULT_AGENTS.map((agentSpec) => {
-            const report = swarmReports.find((r) => r.agentId === agentSpec.agentId);
-            const isExpanded = expandedAgent === agentSpec.agentId;
-
-            return (
-              <div
-                key={agentSpec.agentId}
-                className="flex flex-col justify-between bg-surface p-5 transition-colors hover:bg-mist/30"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-mist text-moss-deep">
-                      <Bot className="size-4" strokeWidth={1.7} />
-                    </span>
-
-                    {running ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-moss-soft px-2.5 py-0.5 text-[0.6875rem] font-medium text-moss-deep">
-                        <Loader2 className="size-3 animate-spin" />
-                        Searching web
-                      </span>
-                    ) : report ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-moss/25 bg-moss-soft px-2.5 py-0.5 text-[0.6875rem] font-medium text-moss-deep">
-                        <Check className="size-3" strokeWidth={2.4} />
-                        {plural(report.findingsCount, "target")}
-                      </span>
-                    ) : (
-                      <span className="rounded-full border border-line bg-mist px-2.5 py-0.5 text-[0.6875rem] text-muted">
-                        Standby
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 className="mt-3.5 text-base font-medium text-ink">
-                    {agentSpec.agentName}
-                  </h3>
-                  <p className="mt-1 text-xs leading-relaxed text-muted">
-                    {agentSpec.role}
-                  </p>
-
-                  {running && (
-                    <div className="mt-3 space-y-1.5 rounded-lg border border-line bg-mist/60 p-2.5 text-[0.6875rem] text-ink-soft">
-                      <p className="flex items-center gap-1.5 font-medium text-moss-deep">
-                        <Search className="size-3" />
-                        Querying Google Search index...
-                      </p>
-                      <p className="truncate text-muted">
-                        &ldquo;{profile.fullName}&rdquo; {profile.city}
-                      </p>
-                    </div>
-                  )}
-
-                  {!running && report && (
-                    <div className="mt-3 space-y-2 border-t border-line pt-3">
-                      <p
-                        className={cn(
-                          "text-xs leading-relaxed text-ink-soft",
-                          !isExpanded && "line-clamp-3"
-                        )}
-                      >
-                        {report.summary}
-                      </p>
-                      {report.summary.length > 140 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedAgent(isExpanded ? null : agentSpec.agentId)
-                          }
-                          className="text-[0.6875rem] font-medium text-moss hover:underline"
-                        >
-                          {isExpanded ? "Show less" : "Read full briefing"}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {!running && report && report.sources.length > 0 && (
-                  <div className="mt-4 border-t border-line pt-3">
-                    <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted">
-                      Live Web Grounding ({report.sources.length})
-                    </p>
-                    <ul className="mt-1.5 space-y-1">
-                      {report.sources.slice(0, 3).map((src) => (
-                        <li key={src.uri}>
-                          <a
-                            href={src.uri}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 truncate text-[0.7rem] text-moss-deep hover:underline"
-                          >
-                            <Globe className="size-3 shrink-0 text-moss" />
-                            <span className="truncate">{src.title}</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
       </div>
 
-      {/* Actionable Removal Email List Built by the Swarm */}
-      {swarmFindings.length > 0 ? (
+      {/* Actionable Removal Email List Built by Gemini 3.8 Flash */}
+      {aiFindings.length > 0 ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
             <div>
               <h3 className="text-xl text-ink">
-                Swarm Removal Queue ({swarmFindings.length})
+                Gemini 3.8 Flash Removal List ({aiFindings.length})
               </h3>
               <p className="text-xs text-muted">
-                Every exposure below includes a resolved privacy contact email so you can
+                Every website below includes a resolved privacy contact email so you can
                 review and dispatch deletion requests directly via Gmail.
               </p>
             </div>
@@ -349,17 +210,17 @@ export function SwarmPanel({
             <button
               type="button"
               onClick={() =>
-                onCompose(swarmFindings.map((finding) => ({ finding })))
+                onCompose(aiFindings.map((finding) => ({ finding })))
               }
               className="btn btn-primary btn-sm"
             >
               <Send className="size-3.5" strokeWidth={1.8} />
-              Draft &amp; Send All ({swarmFindings.length})
+              Draft &amp; Send All ({aiFindings.length})
             </button>
           </div>
 
           <div className="grid gap-3">
-            {swarmFindings.map((finding) => {
+            {aiFindings.map((finding) => {
               const status = statuses[finding.id];
               return (
                 <article
@@ -370,8 +231,8 @@ export function SwarmPanel({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-1 rounded-md border border-moss/25 bg-moss-soft px-2 py-0.5 text-[0.6875rem] font-medium text-moss-deep">
-                          <Bot className="size-3" />
-                          {finding.discoveredByAgent}
+                          <Sparkles className="size-3" />
+                          Gemini 3.8 Flash
                         </span>
                         <h4 className="text-base font-medium text-ink">
                           {finding.broker}
@@ -462,27 +323,26 @@ export function SwarmPanel({
         !running && (
           <div className="rounded-2xl border border-dashed border-line-strong bg-surface/60 px-6 py-12 text-center">
             <div className="mx-auto grid size-11 place-items-center rounded-2xl border border-line bg-mist text-moss">
-              <Bot className="size-5" strokeWidth={1.7} />
+              <Sparkles className="size-5" strokeWidth={1.7} />
             </div>
             <h3 className="mt-4 text-lg text-ink">
-              Ready to dispatch the AI Reconnaissance Swarm
+              Ready to search with Gemini 3.8 Flash
             </h3>
             <p className="mx-auto mt-1.5 max-w-md text-xs leading-relaxed text-muted">
-              Click &ldquo;Deploy AI Agent Swarm&rdquo; above. Four specialized Gemini
-              agents will search the live web for{" "}
+              Click &ldquo;Search with Gemini 3.8 Flash&rdquo; above to find websites,
+              people directories, and contact brokers exposing{" "}
               <strong className="text-ink">{profile.fullName}</strong> in{" "}
-              <strong className="text-ink">{profile.city}</strong>, extract exposed
-              records, resolve each broker&apos;s privacy officer email, and build your
-              removal queue.
+              <strong className="text-ink">{profile.city}</strong>, complete with verified
+              privacy officer emails.
             </p>
             <div className="mt-5 flex justify-center">
               <button
                 type="button"
-                onClick={runSwarm}
+                onClick={runGeminiSearch}
                 className="btn btn-primary btn-sm"
               >
                 <Sparkles className="size-4" />
-                Deploy AI Agent Swarm Now
+                Search with Gemini 3.8 Flash
               </button>
             </div>
           </div>
@@ -493,8 +353,8 @@ export function SwarmPanel({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-xs text-muted">
         <span className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-moss" />
-          All AI Swarm discoveries are added directly to your Findings tab so you can
-          send statutory GDPR/CCPA deletion requests via 1-click Gmail.
+          All Gemini 3.8 Flash discoveries are added to your Findings tab so you can
+          send statutory GDPR, CCPA, or DPDP deletion requests via 1-click Gmail.
         </span>
       </div>
     </div>

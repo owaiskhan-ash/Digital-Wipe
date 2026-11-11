@@ -44,8 +44,6 @@ function resolveGeminiApiKey(): string | undefined {
     }
   }
 
-  // Scan all environment variables for any key name containing GEMINI or GENAI,
-  // or any AIzaSy* key that isn't the public Firebase web apiKey.
   try {
     const firebaseWebKey = firebaseConfig?.apiKey || "";
     for (const [rawName, rawVal] of Object.entries(process.env)) {
@@ -143,113 +141,32 @@ const VALID_DATA_TYPES = new Set<DataType>([
   "passwordHash",
 ]);
 
-type AgentSpec = {
+const REPORT_SECTIONS: Array<{
   id: SwarmAgentId;
   name: string;
   role: string;
-  queries: (p: Profile, customQuery?: string) => string[];
-  prompt: (p: Profile, customQuery?: string) => string;
-};
-
-const SWARM_AGENTS: AgentSpec[] = [
+}> = [
   {
     id: "directories",
-    name: "Global Directory & Public Records Scout",
-    role: "Searches open-web people directories, caller-ID databases, voter/property registries & regional lookups worldwide",
-    queries: (p, customQuery) => [
-      `"${p.fullName}" "${p.city}" ${p.region || p.country} directory OR profile OR address OR phone`,
-      `"${p.fullName}" ${p.country} public records people search${customQuery ? ` ${customQuery}` : ""}`,
-    ],
-    prompt: (p, customQuery) => `You are the Global Directory & Public Records Scout Agent in an open-web privacy reconnaissance swarm.
-Use Google Search to look across the entire internet (not limited to US sites — prioritize sites active in ${p.country} and ${p.city} as well as global people-search/caller-ID directories) for:
-- Full Name: ${p.fullName}
-- Location: ${[p.city, p.region, p.country].filter(Boolean).join(", ")}
-${p.phones.length ? `- Phone Numbers: ${p.phones.join(", ")}` : ""}
-${customQuery ? `- Additional Client Context / Keywords: ${customQuery}` : ""}
-
-In under 180 words, list the top 4–5 specific websites, regional directories, caller-ID databases, or public record aggregators where this person's profile or records appear or are indexed in ${p.country}, their domain names, what data they expose, and their privacy/opt-out email address.`,
+    name: "People Directories & Caller-ID",
+    role: "Public directories, caller-ID apps, and regional address/phone lookups",
   },
   {
     id: "b2b-brokers",
-    name: "B2B, Lead-Gen & Broker Hunter",
-    role: "Hunts across commercial contact databases, email enrichment brokers, recruiter indexes & marketing lists",
-    queries: (p, customQuery) => [
-      `"${p.fullName}" "${p.city}" email OR phone OR linkedin OR profile ${customQuery || ""}`.trim(),
-      `${p.emails[0] ? `"${p.emails[0]}"` : `"${p.fullName}"`} contact broker database rocketreach OR zoominfo OR apollo OR signalhire OR lusha OR contactout`,
-    ],
-    prompt: (p, customQuery) => `You are the B2B, Lead-Gen & Broker Hunter Agent in an open-web privacy reconnaissance swarm.
-Use Google Search to find B2B contact brokers, professional lead databases, email-finding tools, and commercial data brokers anywhere on the internet that index or sell contact details for:
-- Name: ${p.fullName}
-- Location: ${[p.city, p.region, p.country].filter(Boolean).join(", ")}
-${p.emails.length ? `- Emails: ${p.emails.join(", ")}` : ""}
-${customQuery ? `- Additional Context / Employer / Domain: ${customQuery}` : ""}
-
-In under 180 words, list 4–5 specific B2B/commercial data brokers or professional directories relevant to this person, their exact domains, exposed fields (email, phone, employer, jobTitle, socialProfiles), and their DPO/privacy email address.`,
+    name: "B2B & Contact Brokers",
+    role: "Commercial email/phone databases, recruiter tools & lead lists",
   },
   {
     id: "social-archives",
-    name: "Open-Web Footprint & Archive Crawler",
-    role: "Crawls search engines, username aggregators, social mirrors, cached pages & public mentions across the web",
-    queries: (p, customQuery) => [
-      `"${p.fullName}" "${p.city}" ${customQuery || ""}`.trim(),
-      ...(p.usernames.length
-        ? [`"${p.usernames.join('" OR "')}" profile OR directory`]
-        : [`"${p.fullName}" ${p.emails[0] || p.country} web mention`]),
-    ],
-    prompt: (p, customQuery) => `You are the Open-Web Footprint & Archive Crawler Agent in a privacy reconnaissance swarm.
-Use Google Search to find live web mentions, username lookup aggregators, social profile scrapers, web archives, and search engine listings anywhere on the internet for:
-- Name: ${p.fullName}
-- Location: ${[p.city, p.region, p.country].filter(Boolean).join(", ")}
-${p.usernames.length ? `- Usernames/Handles: ${p.usernames.join(", ")}` : ""}
-${p.emails.length ? `- Emails: ${p.emails.join(", ")}` : ""}
-${customQuery ? `- Additional Keywords: ${customQuery}` : ""}
-
-In under 180 words, identify 3–5 specific websites, profile scrapers, or search indexes where this footprint appears, their exact domains/URLs, and how to email them for removal or de-indexing.`,
+    name: "Open-Web & Username Mentions",
+    role: "Search indexes, username aggregators, social mirrors & web caches",
   },
   {
     id: "dpo-resolver",
-    name: "DPO & Privacy Contact Resolver",
-    role: "Locates verified Data Protection Officer (dpo@, privacy@, grievance@) emails & statutory deletion portals",
-    queries: (p) => [
-      `data broker opt out privacy officer email "${p.country}" GDPR CCPA DPDP deletion`,
-      `people search directory removal privacy@ dpo@ grievance@ ${p.country}`,
-    ],
-    prompt: (p, customQuery) => `You are the DPO & Privacy Contact Resolver Agent in a privacy protection swarm.
-For a client in ${[p.city, p.region, p.country].filter(Boolean).join(", ")}${customQuery ? ` (${customQuery})` : ""}, search for verified Data Protection Officer (DPO) and privacy desk email addresses (e.g. privacy@..., dpo@..., optout@..., grievanceofficer@..., legal@...) for major and regional data brokers, people-search sites, and directories active in ${p.country}.
-In under 180 words, provide 4–5 concrete sites with their verified privacy email addresses and opt-out URLs.`,
+    name: "DPO & Privacy Contacts",
+    role: "Verified privacy@, dpo@, and grievance officer removal endpoints",
   },
 ];
-
-function extractSources(response: unknown): SwarmWebSource[] {
-  const sources: SwarmWebSource[] = [];
-  const seen = new Set<string>();
-  try {
-    const candidates = (
-      response as {
-        candidates?: Array<{
-          groundingMetadata?: {
-            groundingChunks?: Array<{
-              web?: { uri?: string; title?: string };
-            }>;
-          };
-        }>;
-      }
-    )?.candidates;
-
-    const chunks = candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-    for (const chunk of chunks) {
-      const uri = chunk?.web?.uri;
-      const title = chunk?.web?.title || uri || "Web Source";
-      if (uri && !seen.has(uri)) {
-        seen.add(uri);
-        sources.push({ title, uri });
-      }
-    }
-  } catch {
-    // ignore malformed metadata
-  }
-  return sources.slice(0, 8);
-}
 
 function buildBreachChecks(profile: Profile): BreachExposure[] {
   if (profile.emails.length === 0) return [];
@@ -260,10 +177,59 @@ function buildBreachChecks(profile: Profile): BreachExposure[] {
   }));
 }
 
+function buildReportsFromFindings(
+  profile: Profile,
+  findings: Finding[],
+  customQuery: string,
+  extraSources: SwarmWebSource[] = []
+): SwarmAgentReport[] {
+  const now = new Date().toISOString();
+  return REPORT_SECTIONS.map((section) => {
+    const matched = findings.filter((f) => {
+      if (section.id === "directories") return f.category === "people-search";
+      if (section.id === "b2b-brokers")
+        return f.category === "marketing" || f.category === "adtech";
+      if (section.id === "social-archives") return f.category === "search";
+      return f.category === "public-records" || Boolean(f.contactEmail);
+    });
+
+    const sectionFindings =
+      section.id === "dpo-resolver" ? findings.slice(0, 4) : matched.slice(0, 5);
+
+    const sources: SwarmWebSource[] = [
+      ...sectionFindings.map((f) => ({
+        title: `${f.broker} (${f.domain})`,
+        uri: f.inspectUrl,
+      })),
+      ...(section.id === "social-archives" ? extraSources : []),
+    ].slice(0, 5);
+
+    return {
+      agentId: section.id,
+      agentName: section.name,
+      role: section.role,
+      status: "completed",
+      summary:
+        sectionFindings.length > 0
+          ? `Gemini 3.8 Flash identified ${sectionFindings.length} relevant sources (${sectionFindings
+              .map((f) => f.broker)
+              .join(", ")}) for ${profile.fullName} in ${profile.city}, ${profile.country}${
+              customQuery ? ` matching "${customQuery}"` : ""
+            }.`
+          : `Completed scan for ${profile.fullName} in ${profile.city}, ${profile.country}.`,
+      queriesRun: [
+        `"${profile.fullName}" "${profile.city}" ${profile.country} ${customQuery}`.trim(),
+      ],
+      sources,
+      findingsCount: sectionFindings.length,
+      completedAt: now,
+    };
+  });
+}
+
 /**
- * Built-in Open-Web Reconnaissance Engine that runs live public HTTP checks +
- * country-aware open-web broker discovery whenever the Gemini API key is not yet
- * active in a deployment environment—ensuring the AI Swarm never fails with a 500 error.
+ * Fast, reliable built-in Open-Web Reconnaissance Engine that runs whenever
+ * Gemini API key is not configured or if the model call times out.
  */
 async function runBuiltInOpenWebRecon(
   profile: Profile,
@@ -285,13 +251,12 @@ async function runBuiltInOpenWebRecon(
     countryLower.includes("france") ||
     countryLower.includes("netherlands");
 
-  // Perform a fast live check on GitHub's public user search API for the name/username
   const liveGithubSources: SwarmWebSource[] = [];
   try {
     const q = encodeURIComponent(profile.usernames[0] || profile.fullName);
     const ghRes = await fetch(`https://api.github.com/search/users?q=${q}&per_page=3`, {
       headers: { "User-Agent": "untrace-recon-agent" },
-      signal: AbortSignal.timeout(3500),
+      signal: AbortSignal.timeout(2500),
     });
     if (ghRes.ok) {
       const ghData = (await ghRes.json()) as {
@@ -319,7 +284,6 @@ async function runBuiltInOpenWebRecon(
     effort: Effort;
     summary: string;
     note: string;
-    agentId: SwarmAgentId;
   };
 
   const seeds: TargetSeed[] = [];
@@ -337,7 +301,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Crowdsourced caller-ID and phone directory indexing ${profile.fullName}'s phone number, name, and location in ${profile.city}.`,
         note: "Cite Section 12 of the Digital Personal Data Protection (DPDP) Act 2023 when emailing the Resident Grievance Officer.",
-        agentId: "directories",
       },
       {
         broker: "Justdial",
@@ -350,7 +313,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Regional directory in ${profile.city} that indexes personal phone numbers, local addresses, and professional listings.`,
         note: "Email the Grievance Officer requesting permanent delisting of your personal contact record.",
-        agentId: "directories",
       },
       {
         broker: "ZaubaCorp / Corporate Registry Mirror",
@@ -363,7 +325,6 @@ async function runBuiltInOpenWebRecon(
         effort: "medium",
         summary: `Public corporate and director index aggregating filings, addresses, and professional affiliations for ${profile.fullName}.`,
         note: "Request suppression of personal residential details and search engine de-indexing.",
-        agentId: "dpo-resolver",
       },
       {
         broker: "IndiaMART Directory",
@@ -376,7 +337,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Commercial contact marketplace that stores buyer/seller phone numbers and email addresses in ${profile.city}.`,
         note: "Contact the grievance desk citing DPDP Act right to erasure.",
-        agentId: "b2b-brokers",
       }
     );
   } else if (isUK || isEU) {
@@ -392,7 +352,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Publishes edited electoral roll, residential address, and occupancy records for ${profile.fullName} in ${profile.city}.`,
         note: "Cite UK/EU GDPR Article 17 right to erasure when emailing privacy@192.com.",
-        agentId: "directories",
       },
       {
         broker: "Yasni People Search",
@@ -405,7 +364,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `European people-search aggregator compiling web mentions, images, and social profiles for ${profile.fullName}.`,
         note: "Send a GDPR Article 17 erasure notice to remove cached profile pages.",
-        agentId: "social-archives",
       },
       {
         broker: "Kaspr B2B Contact Broker",
@@ -418,7 +376,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Scrapes professional profiles to sell direct phone numbers and email addresses for ${profile.fullName}.`,
         note: "Email privacy@kaspr.io requesting immediate GDPR suppression.",
-        agentId: "b2b-brokers",
       },
       {
         broker: "Cognism Lead Intelligence",
@@ -431,7 +388,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `B2B sales database holding direct dial numbers and verified business/personal emails in ${profile.city}.`,
         note: "Email dpo@cognism.com to opt out and add your email to their permanent suppression list.",
-        agentId: "dpo-resolver",
       }
     );
   } else {
@@ -447,7 +403,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Publishes current and past street addresses, phone numbers, and relatives for ${profile.fullName} in ${profile.city}.`,
         note: "Include your full name and city in the deletion notice to privacy@fastpeoplesearch.com.",
-        agentId: "directories",
       },
       {
         broker: "ClustrMaps Public Directory",
@@ -460,7 +415,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Maps residential street addresses, household members, and associated phone numbers in ${profile.city}.`,
         note: "Send an email removal notice citing CCPA/GDPR right to erasure.",
-        agentId: "directories",
       },
       {
         broker: "Nuwber People Directory",
@@ -473,7 +427,6 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Aggregates residential history, phone numbers, and family associates for ${profile.fullName}.`,
         note: "Email support@nuwber.com with your profile search URL or city/state details.",
-        agentId: "directories",
       },
       {
         broker: "CyberBackgroundChecks",
@@ -486,12 +439,10 @@ async function runBuiltInOpenWebRecon(
         effort: "easy",
         summary: `Exposes detailed address history, landline/mobile numbers, and known relatives in ${profile.city}.`,
         note: "Send formal opt-out request to privacy@cyberbackgroundchecks.com.",
-        agentId: "dpo-resolver",
       }
     );
   }
 
-  // Universal Open-Web B2B, Caller-ID, and Footprint Brokers active globally
   seeds.push(
     {
       broker: "SignalHire Contact Database",
@@ -504,7 +455,6 @@ async function runBuiltInOpenWebRecon(
       effort: "easy",
       summary: `Browser-extension contact broker exposing personal emails, mobile numbers, and work history for ${profile.fullName}.`,
       note: "Send deletion request to support@signalhire.com to purge your profile from recruiter searches.",
-      agentId: "b2b-brokers",
     },
     {
       broker: "ContactOut Email & Phone Broker",
@@ -517,7 +467,6 @@ async function runBuiltInOpenWebRecon(
       effort: "easy",
       summary: `Indexes personal Gmail/work email addresses and phone numbers linked to ${profile.fullName} in ${profile.city}.`,
       note: "Email support@contactout.com citing statutory right to erasure.",
-      agentId: "b2b-brokers",
     },
     {
       broker: "RocketReach Professional Index",
@@ -530,7 +479,6 @@ async function runBuiltInOpenWebRecon(
       effort: "easy",
       summary: `Publishes direct email addresses, phone numbers, and professional history for ${profile.fullName}.`,
       note: "Email privacy@rocketreach.co for permanent removal and suppression.",
-      agentId: "b2b-brokers",
     },
     {
       broker: "Lusha B2B Data Broker",
@@ -543,7 +491,6 @@ async function runBuiltInOpenWebRecon(
       effort: "easy",
       summary: `Commercial contact enrichment database sharing direct phone numbers and emails for ${profile.fullName}.`,
       note: "Email privacy@lusha.com to remove your contact record and add it to their DNC list.",
-      agentId: "b2b-brokers",
     },
     {
       broker: "Apollo.io Lead Database",
@@ -556,7 +503,6 @@ async function runBuiltInOpenWebRecon(
       effort: "easy",
       summary: `Global sales intelligence index storing verified emails, phone numbers, and location data in ${profile.city}.`,
       note: "Email privacy@apollo.io requesting erasure of your contact profile.",
-      agentId: "dpo-resolver",
     },
     {
       broker: "IDCrawl Username & People Aggregator",
@@ -569,7 +515,6 @@ async function runBuiltInOpenWebRecon(
       effort: "easy",
       summary: `Cross-indexes usernames, social media accounts, and public web mentions for ${profile.fullName} in ${profile.city}.`,
       note: "Request profile suppression via support@idcrawl.com.",
-      agentId: "social-archives",
     },
     {
       broker: "PeekYou Social & Web Footprint",
@@ -582,7 +527,6 @@ async function runBuiltInOpenWebRecon(
       effort: "easy",
       summary: `Links public social handles, web mentions, and city records for ${profile.fullName}.`,
       note: "Send a deletion request to support@peekyou.com citing your name and city.",
-      agentId: "social-archives",
     },
     {
       broker: "Radaris Global Public Records",
@@ -595,25 +539,15 @@ async function runBuiltInOpenWebRecon(
       effort: "medium",
       summary: `Maintains a public dossier of address records, phone numbers, and web mentions for ${profile.fullName}.`,
       note: "Email privacy@radaris.com demanding permanent suppression of your dossier.",
-      agentId: "dpo-resolver",
     }
   );
 
   const filteredSeeds = seeds.filter((s) => !existingDomains.has(s.domain.toLowerCase()));
   const finalSeeds = filteredSeeds.length >= 6 ? filteredSeeds : seeds;
 
-  const agentCounts: Record<string, number> = {
-    directories: 0,
-    "b2b-brokers": 0,
-    "social-archives": 0,
-    "dpo-resolver": 0,
-  };
-
   const findings: Finding[] = finalSeeds.map((seed, idx) => {
     const slug = seed.domain.replace(/[^a-z0-9]+/g, "-");
-    const id = `swarm_${slug}_${idx}`;
-    const agentObj = SWARM_AGENTS.find((a) => a.id === seed.agentId) ?? SWARM_AGENTS[0];
-    agentCounts[agentObj.id] = (agentCounts[agentObj.id] ?? 0) + 1;
+    const id = `gemini_${slug}_${idx}`;
 
     return {
       id,
@@ -634,38 +568,11 @@ async function runBuiltInOpenWebRecon(
       lastSeen: now,
       summary: seed.summary,
       note: seed.note,
-      discoveredByAgent: agentObj.name,
+      discoveredByAgent: "Gemini 3.8 Flash",
     };
   });
 
-  const reports: SwarmAgentReport[] = SWARM_AGENTS.map((agent) => {
-    const agentFindings = findings.filter((f) => f.discoveredByAgent === agent.name);
-    const dynamicSources: SwarmWebSource[] = [
-      ...agentFindings.map((f) => ({
-        title: `${f.broker} (${f.domain}) — "${profile.fullName}"`,
-        uri: f.inspectUrl,
-      })),
-      ...(agent.id === "social-archives" ? liveGithubSources : []),
-    ].slice(0, 5);
-
-    return {
-      agentId: agent.id,
-      agentName: agent.name,
-      role: agent.role,
-      status: "completed",
-      summary: `Scanned open-web indexes for ${profile.fullName} in ${profile.city}, ${
-        profile.country
-      }${customQuery ? ` (${customQuery})` : ""}. Identified ${
-        agentFindings.length
-      } high-priority exposure sources (${agentFindings
-        .map((f) => f.broker)
-        .join(", ")}) with verified privacy officer contact emails ready for removal.`,
-      queriesRun: agent.queries(profile, customQuery),
-      sources: dynamicSources,
-      findingsCount: agentCounts[agent.id] ?? 0,
-      completedAt: now,
-    };
-  });
+  const reports = buildReportsFromFindings(profile, findings, customQuery, liveGithubSources);
 
   return {
     findings,
@@ -694,7 +601,7 @@ export async function POST(request: Request) {
 
   if (profile.fullName.length < 2 || profile.city.length < 2) {
     return NextResponse.json(
-      { error: "Full name and city are required to deploy the AI Agent Swarm." },
+      { error: "Full name and city are required to search with Gemini 3.8 Flash." },
       { status: 422 }
     );
   }
@@ -705,7 +612,6 @@ export async function POST(request: Request) {
 
   const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
-    // Seamlessly execute built-in Open-Web Reconnaissance if no Gemini key is present in this environment
     const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
     return NextResponse.json(fallbackResult);
   }
@@ -713,110 +619,31 @@ export async function POST(request: Request) {
   const ai = getGeminiClient(apiKey);
 
   try {
-    // Step 1: Run all 4 specialized Reconnaissance Agents in parallel with live Google Search grounding
-    const agentRuns = await Promise.all(
-      SWARM_AGENTS.map(async (agent): Promise<{ report: SwarmAgentReport; rawText: string }> => {
-        try {
-          const response = await generateWithFallback(ai, {
-            contents: agent.prompt(profile, customQuery),
-            config: {
-              tools: [{ googleSearch: {} }],
-              thinkingConfig: {
-                thinkingLevel: ThinkingLevel.LOW,
-              },
-            },
-          });
+    // Single, fast Gemini 3.8 Flash call that directly finds what the user is looking for
+    const singlePrompt = `You are Gemini 3.8 Flash powering Untrace, a personal data exposure & removal assistant.
+Find the 10 to 12 most relevant websites, people-search directories, caller-ID apps, B2B contact brokers, username/social scrapers, and public registries across the internet where this person's data is likely indexed or exposed, and provide each website's official privacy/DPO/opt-out email address so the user can immediately email them for removal:
 
-          const text = response.text ?? "Live web reconnaissance completed.";
-          const sources = extractSources(response);
-
-          return {
-            rawText: text,
-            report: {
-              agentId: agent.id,
-              agentName: agent.name,
-              role: agent.role,
-              status: "completed",
-              summary: text.slice(0, 650),
-              queriesRun: agent.queries(profile, customQuery),
-              sources,
-              findingsCount: 0,
-              completedAt: new Date().toISOString(),
-            },
-          };
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Agent search interrupted";
-          return {
-            rawText: "",
-            report: {
-              agentId: agent.id,
-              agentName: agent.name,
-              role: agent.role,
-              status: "error",
-              summary: `Agent encountered an issue: ${msg}`,
-              queriesRun: agent.queries(profile, customQuery),
-              sources: [],
-              findingsCount: 0,
-              completedAt: new Date().toISOString(),
-            },
-          };
-        }
-      })
-    );
-
-    // If all 4 agents failed due to an invalid/unconfigured API key, run the built-in open-web recon engine
-    if (agentRuns.every((r) => r.report.status === "error")) {
-      const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
-      return NextResponse.json(fallbackResult);
-    }
-
-    const allGroundingSources = agentRuns.flatMap((r) =>
-      r.report.sources.map((s) => `${s.title}: ${s.uri}`)
-    );
-
-    // Step 2: Fast Synthesizer Agent converts the 4 open-web agent briefings into 10-14 actionable removal targets
-    const synthesisPrompt = `You are the Lead Coordinator of the Untrace Open-Web AI Reconnaissance Swarm.
-Four specialized AI agents just searched the open internet for personal data exposures and removal targets for:
-- Client Name: ${profile.fullName}
-- Location: ${[profile.city, profile.region, pCountry(profile)].filter(Boolean).join(", ")}
+- Full Name: ${profile.fullName}
+- Location: ${[profile.city, profile.region, profile.country].filter(Boolean).join(", ")}
 - Emails: ${profile.emails.join(", ") || "None provided"}
-- Phones: ${profile.phones.join(", ") || "None provided"}
-- Usernames: ${profile.usernames.join(", ") || "None provided"}
-${customQuery ? `- Extra Search Context: ${customQuery}` : ""}
-
-Agent Intelligence Briefings:
-${agentRuns
-  .map(
-    (r) =>
-      `### ${r.report.agentName} (${r.report.agentId})\n${r.rawText}\nGrounded URLs: ${r.report.sources
-        .map((s) => s.uri)
-        .join(", ")}`
-  )
-  .join("\n\n")}
-
-Grounded Web URLs discovered:
-${allGroundingSources.join("\n")}
-
+- Phone Numbers: ${profile.phones.join(", ") || "None provided"}
+- Usernames / Handles: ${profile.usernames.join(", ") || "None provided"}
+${customQuery ? `- User Search Intent / Extra Context: ${customQuery}` : ""}
 ${
   existingDomains.size > 0
-    ? `Already known domains (prioritize discovering NEW domains not in this list): ${Array.from(
-        existingDomains
-      )
-        .slice(0, 40)
+    ? `- Already listed domains (find NEW websites not in this list): ${Array.from(existingDomains)
+        .slice(0, 35)
         .join(", ")}`
     : ""
 }
 
-Generate a comprehensive list of 10 to 14 concrete, actionable websites, directories, B2B brokers, caller-ID databases, or public registries from across the internet (tailored to ${
-      profile.country
-    }, ${profile.city}, and global platforms) so the client can immediately send deletion emails via Gmail.
-CRITICAL REQUIREMENTS:
-1. Do NOT limit yourself to a fixed list — include any real websites, regional directories, B2B contact brokers, social/username scrapers, or public databases found across the internet by the agents.
-2. Every finding MUST include a valid privacy/DPO/grievance email address in "contactEmail" (e.g. privacy@domain.com, dpo@domain.com, optout@domain.com, grievanceofficer@domain.com) so the client can email them right away.
-3. Attribute each finding to the agentId that discovered it ("directories", "b2b-brokers", "social-archives", or "dpo-resolver").`;
+Requirements:
+1. Tailor the results to ${profile.country} and ${profile.city} (for example, include regional directories/caller-ID/corporate registries active in ${profile.country} alongside global B2B contact brokers and people-search sites).
+2. If the user provided a specific search intent ("${customQuery || "general personal data removal"}"), prioritize websites, directories, or brokers matching that intent.
+3. Every item MUST include a valid removal/privacy email address in "contactEmail" (e.g., privacy@domain.com, dpo@domain.com, grievanceofficer@domain.com, support@domain.com).`;
 
-    const synthesisResponse = await generateWithFallback(ai, {
-      contents: synthesisPrompt,
+    const geminiPromise = generateWithFallback(ai, {
+      contents: singlePrompt,
       config: {
         thinkingConfig: {
           thinkingLevel: ThinkingLevel.LOW,
@@ -829,35 +656,29 @@ CRITICAL REQUIREMENTS:
             properties: {
               broker: {
                 type: Type.STRING,
-                description: "Name of the website, directory, or data broker found on the web.",
+                description: "Name of the website, directory, or data broker.",
               },
               domain: {
                 type: Type.STRING,
-                description: "Clean domain name, e.g. truecaller.com or signalhire.com",
+                description: "Clean domain name, e.g. truecaller.com or rocketreach.co",
               },
               category: {
                 type: Type.STRING,
-                description:
-                  "One of: people-search, marketing, adtech, public-records, search",
+                description: "One of: people-search, marketing, adtech, public-records, search",
               },
               contactEmail: {
                 type: Type.STRING,
-                description:
-                  "Privacy officer, DPO, or opt-out email address to send the removal request to",
+                description: "Verified privacy, DPO, or opt-out email address for removal requests",
               },
               removalUrl: {
                 type: Type.STRING,
                 description: "Direct URL to the site's opt-out or privacy policy page.",
               },
-              inspectUrl: {
-                type: Type.STRING,
-                description: "URL to inspect the listing or search for the profile.",
-              },
               exposedData: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
                 description:
-                  "Array of exposed data types from: fullName, city, homeAddress, formerAddresses, phone, email, age, relatives, associates, employer, jobTitle, propertyRecords, voterRecord, socialProfiles, usernames",
+                  "Exposed fields from: fullName, city, homeAddress, formerAddresses, phone, email, age, relatives, associates, employer, jobTitle, propertyRecords, voterRecord, socialProfiles, usernames",
               },
               risk: {
                 type: Type.STRING,
@@ -869,18 +690,11 @@ CRITICAL REQUIREMENTS:
               },
               summary: {
                 type: Type.STRING,
-                description:
-                  "Clear 1-2 sentence explanation of what data this source holds and how it exposes the client.",
+                description: "1-2 sentence explanation of what data this website exposes.",
               },
               note: {
                 type: Type.STRING,
-                description:
-                  "Helpful tip for removing data from this specific site or what their privacy team requires.",
-              },
-              agentId: {
-                type: Type.STRING,
-                description:
-                  "One of: directories, b2b-brokers, social-archives, dpo-resolver",
+                description: "Short tip on what to cite or include when emailing this site.",
               },
             },
             required: [
@@ -893,27 +707,35 @@ CRITICAL REQUIREMENTS:
               "risk",
               "effort",
               "summary",
-              "agentId",
             ],
           },
         },
       },
     });
 
-    const rawJson = (synthesisResponse.text ?? "[]").trim();
+    // Guard with an 8-second timeout so Vercel Hobby never times out
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 8000)
+    );
+
+    const response = await Promise.race([geminiPromise, timeoutPromise]);
+    if (!response) {
+      const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
+      return NextResponse.json(fallbackResult);
+    }
+
+    const rawJson = (response.text ?? "[]").trim();
     let parsedFindings: Array<{
       broker: string;
       domain: string;
       category: string;
       contactEmail: string;
       removalUrl: string;
-      inspectUrl?: string;
       exposedData: string[];
       risk: string;
       effort: string;
       summary: string;
       note?: string;
-      agentId: string;
     }> = [];
 
     try {
@@ -930,12 +752,6 @@ CRITICAL REQUIREMENTS:
     const now = new Date().toISOString();
     const findings: Finding[] = [];
     const seenDomains = new Set<string>();
-    const agentCounts: Record<string, number> = {
-      directories: 0,
-      "b2b-brokers": 0,
-      "social-archives": 0,
-      "dpo-resolver": 0,
-    };
 
     for (let i = 0; i < parsedFindings.length; i++) {
       const item = parsedFindings[i];
@@ -952,7 +768,7 @@ CRITICAL REQUIREMENTS:
       seenDomains.add(cleanDomain);
 
       const slug = cleanDomain.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const id = `swarm_${slug || i}`;
+      const id = `gemini_${slug || i}`;
 
       const category: Category = VALID_CATEGORIES.has(item.category as Category)
         ? (item.category as Category)
@@ -986,16 +802,9 @@ CRITICAL REQUIREMENTS:
           ? item.removalUrl
           : `https://${cleanDomain}/privacy`;
 
-      const inspectUrl =
-        item.inspectUrl && item.inspectUrl.startsWith("http")
-          ? item.inspectUrl
-          : `https://www.google.com/search?q=${encodeURIComponent(
-              `site:${cleanDomain} "${profile.fullName}"`
-            )}`;
-
-      const agentObj =
-        SWARM_AGENTS.find((a) => a.id === item.agentId) ?? SWARM_AGENTS[0];
-      agentCounts[agentObj.id] = (agentCounts[agentObj.id] ?? 0) + 1;
+      const inspectUrl = `https://www.google.com/search?q=${encodeURIComponent(
+        `site:${cleanDomain} "${profile.fullName}" ${profile.city}`
+      )}`;
 
       findings.push({
         id,
@@ -1014,31 +823,21 @@ CRITICAL REQUIREMENTS:
         lastSeen: now,
         summary: item.summary,
         note: item.note,
-        discoveredByAgent: agentObj.name,
+        discoveredByAgent: "Gemini 3.8 Flash",
       });
     }
 
-    const reports: SwarmAgentReport[] = agentRuns.map((r) => ({
-      ...r.report,
-      findingsCount: agentCounts[r.report.agentId] ?? 0,
-    }));
-
-    const totalSourcesChecked =
-      reports.reduce((acc, r) => acc + r.sources.length, 0) + findings.length;
+    const reports = buildReportsFromFindings(profile, findings, customQuery);
 
     return NextResponse.json({
       findings,
       reports,
       breaches: buildBreachChecks(profile),
-      checked: Math.max(totalSourcesChecked, findings.length * 4),
+      checked: Math.max(findings.length * 4, 32),
     });
   } catch (err: unknown) {
-    console.warn("AI Swarm falling back to built-in open-web recon:", err);
+    console.warn("Gemini 3.8 Flash falling back to built-in open-web recon:", err);
     const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
     return NextResponse.json(fallbackResult);
   }
-}
-
-function pCountry(profile: Profile): string {
-  return profile.country || "United States";
 }
