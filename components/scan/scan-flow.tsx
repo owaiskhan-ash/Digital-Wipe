@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -48,6 +48,8 @@ const EMAIL_STAGES = [
   },
 ];
 
+const CLIENT_TIMEOUT_MS = 50_000;
+
 export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const router = useRouter();
   const { scan: existingScan, saveScan } = useStore();
@@ -61,6 +63,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const [status, setStatus] = useState<"idle" | "running" | "error">("idle");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(0);
+  const inFlight = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
   useEffect(() => {
     if (status !== "running") return;
@@ -75,6 +78,25 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     }, 200);
     return () => window.clearInterval(timer);
   }, [status]);
+
+  // Abort an unfinished request when the page goes away, so a late response
+  // cannot navigate the user out of a page they already left.
+  useEffect(() => {
+    return () => {
+      inFlight.current?.controller.abort();
+      inFlight.current = null;
+    };
+  }, []);
+
+  const cancelScan = () => {
+    if (inFlight.current) {
+      inFlight.current.cancelled = true;
+      inFlight.current.controller.abort();
+      inFlight.current = null;
+    }
+    setStatus("idle");
+    setProgress(0);
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -100,11 +122,16 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     setStatus("running");
     setProgress(15);
 
+    const controller = new AbortController();
+    const entry = { controller, cancelled: false };
+    inFlight.current = entry;
+    const timeoutId = window.setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
+
     try {
       const response = await fetch("/api/swarm", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        signal: AbortSignal.timeout(50000),
+        signal: controller.signal,
         body: JSON.stringify({
           mode: scanMode,
           phone: scanMode === "phone" ? cleanPhone : undefined,
@@ -126,6 +153,9 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           payload.error || "Could not complete the scan. Please try again."
         );
       }
+
+      // The user cancelled while this request was in flight: drop the result.
+      if (entry.cancelled) return;
 
       const incomingFindings = payload.findings ?? [];
       const incomingReports = payload.reports ?? [];
@@ -175,19 +205,22 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         router.push(`/dashboard?mode=${scanMode}`);
       }, 200);
     } catch (cause) {
+      // Cancelled by the user: the form is already back, say nothing.
+      if (entry.cancelled) return;
+
       setStatus("error");
-      const isTimeout =
-        cause instanceof Error &&
-        (cause.name === "TimeoutError" ||
-          cause.message.toLowerCase().includes("timed out") ||
-          cause.name === "AbortError");
+      setProgress(0);
+      const isTimeout = controller.signal.aborted;
       setError(
         isTimeout
-          ? "The scan timed out while searching the open web. Please check your connection or try again."
+          ? "The scan ran out of time while searching the open web. Try again, or set a search provider key so scans do not depend on the grounded search finishing."
           : cause instanceof Error
             ? cause.message
             : "Something interrupted the scan. Please try again."
       );
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (inFlight.current === entry) inFlight.current = null;
     }
   };
 
@@ -234,10 +267,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
             <span>Live web search in progress</span>
             <button
               type="button"
-              onClick={() => {
-                setStatus("idle");
-                setProgress(0);
-              }}
+              onClick={cancelScan}
               className="text-muted hover:text-ink underline underline-offset-2 transition-colors"
             >
               Cancel scan

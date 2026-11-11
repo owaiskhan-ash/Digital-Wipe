@@ -16,10 +16,16 @@ import type {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Total time the handler may spend looking things up. */
-const SCAN_BUDGET_MS = 45_000;
-/** Per-request ceiling for the Gemini client. */
-const GEMINI_TIMEOUT_MS = 20_000;
+/** Total time the handler may spend looking things up. Stays under maxDuration. */
+const SCAN_BUDGET_MS = 40_000;
+/**
+ * Ceiling for one Gemini request. A grounded search has to run the query,
+ * read the pages and write the answer, so it needs far more room than a plain
+ * generation: at 20s a real search was cut off every time.
+ */
+const GEMINI_TIMEOUT_MS = 34_000;
+/** Below this there is no point starting another Gemini attempt. */
+const MIN_GEMINI_BUDGET_MS = 8_000;
 /** Ceiling for a single search provider request. */
 const PROVIDER_TIMEOUT_MS = 8_000;
 
@@ -153,11 +159,11 @@ function maskKey(key?: string): string | null {
   return `${key.slice(0, 6)}...${key.slice(-4)}`;
 }
 
-function getGeminiClient(apiKey: string): GoogleGenAI {
+function getGeminiClient(apiKey: string, timeoutMs: number = GEMINI_TIMEOUT_MS): GoogleGenAI {
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
-      timeout: GEMINI_TIMEOUT_MS,
+      timeout: timeoutMs,
       headers: { "User-Agent": "aistudio-build" },
     },
   });
@@ -185,6 +191,19 @@ function isAuthError(err: unknown): boolean {
   );
 }
 
+/**
+ * A request cut off by its own timeout, rather than one the model rejected.
+ * The two need opposite treatment: a rejected model is worth retrying, a slow
+ * search is not, because the retry spends the same time again.
+ */
+function isTimeoutError(err: unknown): boolean {
+  const name = (err as { name?: string } | null)?.name;
+  if (name === "AbortError" || name === "TimeoutError") return true;
+  return /\babort(ed)?\b|timed? ?out|DEADLINE_EXCEEDED|deadline exceeded|ETIMEDOUT|status: ?40[48]/i.test(
+    errorText(err)
+  );
+}
+
 function describeSearchError(err: unknown): string {
   const text = errorText(err);
 
@@ -193,6 +212,11 @@ function describeSearchError(err: unknown): string {
   }
   if (isAuthError(err)) {
     return "The Gemini API rejected this key. Please verify your API key in Settings > Secrets.";
+  }
+  if (isTimeoutError(err)) {
+    return `The web search did not finish within ${Math.round(
+      GEMINI_TIMEOUT_MS / 1000
+    )} seconds, so it was stopped before it could return results. Set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY for a provider that answers in about a second, then try again.`;
   }
   if (/RESOURCE_EXHAUSTED|quota|rate limit/i.test(text)) {
     return "The Gemini API quota for this key is exhausted. Please try again later or use a billing-enabled key.";
@@ -221,14 +245,24 @@ type GenerateOutcome = {
 async function generateWithFallback(
   apiKey: string,
   contents: string,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  deadline?: number
 ): Promise<GenerateOutcome> {
-  const ai = getGeminiClient(apiKey);
   let firstError: unknown = null;
 
   for (const model of CANDIDATE_MODELS) {
+    // Never start an attempt that cannot finish inside the scan budget: it
+    // would only push the function past maxDuration and return a gateway
+    // error instead of a reason the caller can show.
+    const remaining = deadline ? remainingMs(deadline) : GEMINI_TIMEOUT_MS;
+    const budget = Math.min(GEMINI_TIMEOUT_MS, remaining - 1_000);
+    if (budget < MIN_GEMINI_BUDGET_MS) {
+      firstError = firstError ?? new Error("The scan budget ran out before Gemini answered.");
+      break;
+    }
+
     try {
-      const response = await ai.models.generateContent({
+      const response = await getGeminiClient(apiKey, budget).models.generateContent({
         model,
         contents,
         config,
@@ -236,8 +270,10 @@ async function generateWithFallback(
       return { response, model, endpoint: "developer" };
     } catch (err) {
       firstError = firstError ?? err;
-      if (isAuthError(err)) {
-        // If the API key is invalid or blocked, trying another model will fail identically
+      // A timeout means the search was slow, not that the model is wrong.
+      // Retrying would spend another full budget on the same slow search.
+      // An auth error is identical on every model, so it stops the loop too.
+      if (isTimeoutError(err) || isAuthError(err)) {
         break;
       }
     }
@@ -252,9 +288,10 @@ async function generateWithFallback(
  */
 async function generateGroundedSearch(
   apiKey: string,
-  prompt: string
+  prompt: string,
+  deadline?: number
 ): Promise<GenerateOutcome> {
-  return generateWithFallback(apiKey, prompt, { tools: [{ googleSearch: {} }] });
+  return generateWithFallback(apiKey, prompt, { tools: [{ googleSearch: {} }] }, deadline);
 }
 
 function buildPhonePermutations(rawPhone: string): string[] {
@@ -793,8 +830,11 @@ function providerStatus(): Record<string, boolean> {
 /**
  * Real check of the configured models, used by the self test. One token, one request.
  */
-async function probeGemini(apiKey: string): Promise<{ model: string; endpoint: string }> {
-  const outcome = await generateWithFallback(apiKey, "ping", { maxOutputTokens: 1 });
+async function probeGemini(
+  apiKey: string,
+  deadline?: number
+): Promise<{ model: string; endpoint: string }> {
+  const outcome = await generateWithFallback(apiKey, "ping", { maxOutputTokens: 1 }, deadline);
   return { model: outcome.model, endpoint: outcome.endpoint };
 }
 
@@ -905,14 +945,16 @@ export async function GET(request: Request) {
     params.get("mode") === "email" ? "email" : "phone";
 
   try {
-    const probe = await probeGemini(apiKey);
+    const selftestDeadline = Date.now() + 50_000;
+    const probe = await probeGemini(apiKey, selftestDeadline);
 
     // Second probe: does this key and model actually run a grounded search?
     let grounding: Record<string, unknown>;
     try {
       const grounded = await generateGroundedSearch(
         apiKey,
-        'Search the web for "example.com" and reply with the single word: ok'
+        'Search the web for "example.com" and reply with the single word: ok',
+        selftestDeadline
       );
       const chunks =
         (
@@ -937,10 +979,12 @@ export async function GET(request: Request) {
 
     let dryrun: Record<string, unknown> | null = null;
     if (sample) {
+      const dryrunStartedAt = Date.now();
       try {
         const grounded = await generateGroundedSearch(
           apiKey,
-          buildGroundedPrompt(sampleMode, sample)
+          buildGroundedPrompt(sampleMode, sample),
+          selftestDeadline
         );
         const shaped = grounded.response as {
           text?: string;
@@ -952,6 +996,7 @@ export async function GET(request: Request) {
           ok: true,
           model: grounded.model,
           endpoint: grounded.endpoint,
+          elapsedMs: Date.now() - dryrunStartedAt,
           citations:
             shaped?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0,
           textChars: text.length,
@@ -1067,7 +1112,7 @@ export async function POST(request: Request) {
     try {
       const groundedPrompt = buildGroundedPrompt(mode, targetValue);
 
-      const grounded = await generateGroundedSearch(apiKey, groundedPrompt);
+      const grounded = await generateGroundedSearch(apiKey, groundedPrompt, deadline);
       const mentions = await extractGroundedMentions(grounded.response, targetValue);
 
       searchCompleted = true;
