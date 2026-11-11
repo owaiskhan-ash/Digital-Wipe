@@ -825,17 +825,37 @@ async function probeGemini(apiKey: string): Promise<{ model: string; endpoint: s
 
 export async function GET(request: Request) {
   const apiKey = resolveGeminiApiKey();
+  const providers = providerStatus();
+  const keyedProviders = Object.entries(providers)
+    .filter(([name, ready]) => ready && name !== "DuckDuckGo")
+    .map(([name]) => name);
+
   const base = {
     status: "ok",
     scanEngineReady: Boolean(apiKey),
+    geminiActive: null as boolean | null,
+    engine: [
+      apiKey ? "Gemini Search Grounding (unverified, run ?selftest=1)" : null,
+      ...keyedProviders,
+      "DuckDuckGo",
+    ]
+      .filter(Boolean)
+      .join(" + "),
+    detectedKeyVariables: [
+      "GEMINI_API_KEY",
+      "GOOGLE_GEMINI_API_KEY",
+      "GOOGLE_GENAI_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "GEMINI_KEY",
+      "GOOGLE_API_KEY",
+    ].filter((name) => Boolean(process.env[name]?.trim())),
     keyMasked: maskKey(apiKey),
-    searchProviders: providerStatus(),
+    searchProviders: providers,
     instruction: apiKey
       ? "A key is configured. Add ?selftest=1 to confirm the API accepts it."
       : "Set GEMINI_API_KEY in Vercel (Production and Preview), then redeploy.",
     fallbackNote:
-      Object.entries(providerStatus()).filter(([name, ready]) => ready && name !== "DuckDuckGo")
-        .length === 0
+      keyedProviders.length === 0
         ? "No keyed search provider is configured, so the fallback is DuckDuckGo, which blocks datacenter traffic. Set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY."
         : null,
   };
@@ -869,6 +889,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         ...base,
+        geminiActive: true,
         selftest: {
           ok: true,
           model: probe.model,
