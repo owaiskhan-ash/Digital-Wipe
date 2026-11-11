@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   keywords: [
     "remove personal data from internet",
+    "remove home address from internet",
+    "opt out of data brokers",
     "data broker removal",
     "people search opt out",
     "delete personal information",
@@ -57,7 +59,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Untrace: every place the internet keeps your data, in one calm list",
+        alt: "Untrace: 45 sites sell your address to anyone who asks, we write the deletion request for all 45",
       },
     ],
   },

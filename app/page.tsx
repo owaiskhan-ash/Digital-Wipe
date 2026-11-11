@@ -196,16 +196,17 @@ export default function HomePage() {
             <div className="animate-fade-up">
               <SectionLabel>Personal data removal</SectionLabel>
 
-              <h1 className="mt-5 text-[2.75rem] leading-[1.03] tracking-[-0.02em] text-ink sm:text-[3.5rem] lg:text-[4rem]">
-                Every place the internet keeps your data.
-                <span className="block text-muted">In one calm list.</span>
+              <h1 className="mt-5 text-[2.5rem] leading-[1.04] tracking-[-0.02em] text-ink sm:text-[3rem] lg:text-[3.5rem]">
+                45 sites sell
+                <span className="block">your address</span>
+                <span className="block text-muted">to anyone who asks.</span>
               </h1>
 
               <p className="mt-7 max-w-xl text-[1.0625rem] leading-[1.7] text-ink-soft">
-                Untrace checks the people-search sites, marketing databases and
-                advertising profiles that hold your name, address and phone
-                number, then writes a deletion request to each owner, ready for
-                you to send.
+                Untrace finds every listing that holds your name, street and
+                phone number, then writes the deletion request that takes you
+                off each one. You send the emails. Nothing leaves your browser
+                until you do.
               </p>
 
               <div className="mt-9 flex flex-wrap items-center gap-3">
