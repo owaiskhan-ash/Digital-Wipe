@@ -6,9 +6,24 @@ import { SiteFooter } from "@/components/site-footer";
 import { ScanFlow } from "@/components/scan/scan-flow";
 
 export const metadata: Metadata = {
-  title: "Start a scan",
+  title: "Start a free scan",
   description:
-    "Check the people-search sites, marketing databases and ad profiles that publish your name, address and phone number.",
+    "Check 45 people-search sites, marketing databases and ad profiles for your name, address and phone number. Free, no account, results in seconds.",
+  alternates: { canonical: "/scan" },
+  openGraph: {
+    url: "/scan",
+    title: "Start a free scan | Untrace",
+    description:
+      "See which directories publish your name, address and phone number, and who to write to about it.",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Untrace: every place the internet keeps your data, in one calm list",
+      },
+    ],
+  },
 };
 
 export default async function ScanPage({
@@ -38,8 +53,8 @@ export default async function ScanPage({
             Let&apos;s find where you live online.
           </h1>
           <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-soft">
-            This takes a few seconds. Only your name and city are required —
-            everything else makes the report sharper.
+            This takes a few seconds. Only your name and city are required.
+            Everything else makes the report sharper.
           </p>
         </div>
 

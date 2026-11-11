@@ -150,8 +150,8 @@ ${signature(profile)}`,
 
   const gdpr = template === "gdpr";
   const subject = gdpr
-    ? `Erasure request under Article 17 GDPR — ${profile.fullName}`
-    : `Request to delete and opt out of the sale of my personal information — ${profile.fullName}`;
+    ? `Erasure request under Article 17 GDPR (${profile.fullName})`
+    : `Request to delete and opt out of the sale of my personal information (${profile.fullName})`;
 
   const intro = gdpr
     ? `I am the data subject named below. I am writing to exercise my right to erasure under Article 17(1) of the GDPR, and my right to object to processing under Article 21.`
@@ -159,8 +159,8 @@ ${signature(profile)}`,
 
   const asks = gdpr
     ? [
-        "Erase all personal data you hold about me, including inferred, derived and pseudonymised profiles (Article 17(1)(a)–(f)).",
-        "Stop all processing for direct marketing and advertising, and record this objection permanently (Article 21(2)–(3)).",
+        "Erase all personal data you hold about me, including inferred, derived and pseudonymised profiles (Article 17(1)(a) to (f)).",
+        "Stop all processing for direct marketing and advertising, and record this objection permanently (Article 21(2) to (3)).",
         "Instruct every third party and processor to whom you have disclosed my data to erase it (Article 17(2)), and tell me who those recipients are (Article 15).",
         "Remove or de-index the public profile so it no longer appears under my name in search engines.",
         "Confirm the erasure in writing, or explain any refusal and its legal basis, within one month.",
@@ -208,7 +208,7 @@ export function buildFollowUpEmail(params: {
   const sent = request.sentAt ? formatDate(request.sentAt) : formatDate(request.createdAt);
 
   return {
-    subject: `Follow-up: erasure request sent ${sent} — ${profile.fullName}`,
+    subject: `Follow-up: erasure request sent ${sent} (${profile.fullName})`,
     body: `Hello ${request.brokerName} privacy team,
 
 I contacted you on ${sent} asking you to delete my personal information and stop selling or publishing it. I have not received a response, and the listing is still visible.

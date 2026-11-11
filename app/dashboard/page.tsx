@@ -5,7 +5,9 @@ import { DashboardView } from "@/components/dashboard/dashboard-view";
 
 export const metadata: Metadata = {
   title: "Your report",
-  description: "Every listing that holds your personal data, and the requests you've sent to remove them.",
+  description:
+    "Every listing that holds your personal data, and the requests you have sent to remove them.",
+  robots: { index: false, follow: false },
 };
 
 export default function DashboardPage() {

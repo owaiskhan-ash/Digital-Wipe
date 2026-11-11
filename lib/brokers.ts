@@ -4,7 +4,7 @@ import type { Broker } from "./types";
  * The sources Untrace checks.
  *
  * Every entry points at a real, public opt-out / preference page. Removal pages
- * on data-broker sites move often — the UI always shows the destination and lets
+ * on data-broker sites move often, so the UI always shows the destination and lets
  * you open it before sending anything. Contact emails are the publicly listed
  * privacy addresses, and are editable in the request composer before sending.
  */
@@ -77,7 +77,7 @@ export const BROKERS: Broker[] = [
     email: "privacy@intelius.com",
     effort: "medium",
     coverage: 0.7,
-    note: "PeopleConnect family — one suppression covers Intelius, TruthFinder, Instant Checkmate and PeopleLooker.",
+    note: "PeopleConnect family: one suppression covers Intelius, TruthFinder, Instant Checkmate and PeopleLooker.",
   },
   {
     id: "truthfinder",
@@ -89,7 +89,7 @@ export const BROKERS: Broker[] = [
     email: "privacy@truthfinder.com",
     effort: "medium",
     coverage: 0.66,
-    note: "PeopleConnect family — covered by the same suppression as Intelius.",
+    note: "PeopleConnect family, covered by the same suppression as Intelius.",
   },
   {
     id: "instant-checkmate",
@@ -101,7 +101,7 @@ export const BROKERS: Broker[] = [
     email: "privacy@instantcheckmate.com",
     effort: "medium",
     coverage: 0.64,
-    note: "PeopleConnect family — covered by the same suppression as Intelius.",
+    note: "PeopleConnect family, covered by the same suppression as Intelius.",
   },
   {
     id: "peekyou",
@@ -178,7 +178,7 @@ export const BROKERS: Broker[] = [
     email: "privacy@peoplelooker.com",
     effort: "medium",
     coverage: 0.56,
-    note: "PeopleConnect family — covered by the same suppression as Intelius.",
+    note: "PeopleConnect family, covered by the same suppression as Intelius.",
   },
   {
     id: "searchpeoplefree",
@@ -288,7 +288,7 @@ export const BROKERS: Broker[] = [
     email: "privacy@zoominfo.com",
     effort: "medium",
     coverage: 0.55,
-    note: "B2B profile — usually built from your work email and company page.",
+    note: "B2B profile, usually built from your work email and company page.",
   },
   {
     id: "apollo",
@@ -444,7 +444,7 @@ export const BROKERS: Broker[] = [
     removalUrl: "https://www.netronline.com/",
     effort: "hard",
     coverage: 0.35,
-    note: "Assessor and recorder portals are run by counties. Restrictions vary — some allow redaction, most don't.",
+    note: "Assessor and recorder portals are run by counties. Restrictions vary: some allow redaction, most don't.",
   },
   {
     id: "fec",

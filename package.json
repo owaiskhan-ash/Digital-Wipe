@@ -12,13 +12,21 @@
     "type": "git",
     "url": "git+https://github.com/owaiskhan-ash/Digital-Wipe.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
+  "keywords": [
+    "privacy",
+    "data-removal",
+    "data-broker",
+    "opt-out",
+    "gdpr",
+    "ccpa",
+    "nextjs"
+  ],
+  "author": "Owais Khan",
+  "license": "AGPL-3.0-or-later",
   "bugs": {
     "url": "https://github.com/owaiskhan-ash/Digital-Wipe/issues"
   },
-  "homepage": "https://github.com/owaiskhan-ash/Digital-Wipe#readme",
+  "homepage": "https://untrace.justsimpleapps.online",
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/instrument-serif": "^5.3.0",

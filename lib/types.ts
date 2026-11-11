@@ -55,7 +55,7 @@ export const CATEGORIES: Record<Category, CategoryMeta> = {
     label: "People-search directories",
     short: "People search",
     blurb:
-      "Sites that assemble a public profile out of your name, address, phone and relatives — and sell lookups to anyone.",
+      "Sites that assemble a public profile out of your name, address, phone and relatives, and sell lookups to anyone.",
     fix: "form",
   },
   marketing: {
@@ -182,7 +182,7 @@ export const REQUEST_STATUS_META: Record<
   sent: {
     label: "Sent",
     tone: "moss",
-    help: "Sent to the site. Most reply or act within 30–45 days.",
+    help: "Sent to the site. Most reply or act within 30 to 45 days.",
   },
   confirmed: {
     label: "Confirmed",

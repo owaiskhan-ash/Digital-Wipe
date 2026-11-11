@@ -2,7 +2,7 @@ import type { BreachExposure } from "./types";
 
 /**
  * Real, publicly documented breaches used to model credential exposure.
- * Nothing here identifies a person — the scan picks a plausible subset.
+ * Nothing here identifies a person; the scan picks a plausible subset.
  */
 export const BREACH_CATALOG: Omit<BreachExposure, "id" | "risk">[] = [
   {
@@ -43,7 +43,7 @@ export const BREACH_CATALOG: Omit<BreachExposure, "id" | "risk">[] = [
     accounts: "143 million",
     exposed: ["email", "usernames", "passwordHash"],
     checkUrl: "https://haveibeenpwned.com/",
-    advice: "Health-adjacent data — avoid reusing this identity anywhere.",
+    advice: "Health-adjacent data. Avoid reusing this identity anywhere.",
   },
   {
     name: "Facebook",
@@ -75,7 +75,7 @@ export const BREACH_CATALOG: Omit<BreachExposure, "id" | "risk">[] = [
     accounts: "40 million",
     exposed: ["email", "fullName", "homeAddress"],
     checkUrl: "https://haveibeenpwned.com/",
-    advice: "Address exposure — expect postal marketing to follow.",
+    advice: "Address exposure. Expect postal marketing to follow.",
   },
   {
     name: "Wattpad",

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./logo";
+import { SITE_DOMAIN, SITE_URL, SOURCE_URL } from "@/lib/site";
 
 const COLUMNS = [
   {
@@ -30,7 +31,7 @@ export function SiteFooter() {
             <Logo />
             <p className="mt-4 text-sm leading-relaxed text-muted">
               Find the places that hold your personal data, then ask each one to
-              delete it — in writing, with the right legal wording.
+              delete it, in writing, with the right legal wording.
             </p>
           </div>
 
@@ -66,7 +67,20 @@ export function SiteFooter() {
           </p>
           <div className="mt-5 flex flex-col gap-2 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
             <p>© {new Date().getFullYear()} Untrace. Made for people, not profiles.</p>
-            <p>Your request history is stored only in this browser.</p>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <a href={SITE_URL} className="transition-colors hover:text-ink">
+                {SITE_DOMAIN}
+              </a>
+              <span aria-hidden>·</span>
+              <a
+                href={`${SOURCE_URL}/blob/main/LICENSE`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-ink"
+              >
+                Source, AGPL-3.0
+              </a>
+            </p>
           </div>
         </div>
       </div>

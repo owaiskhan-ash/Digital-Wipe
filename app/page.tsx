@@ -24,10 +24,19 @@ import { runScan } from "@/lib/scan";
 import { SAMPLE_PROFILE } from "@/lib/sample";
 import { buildRemovalEmail } from "@/lib/removal";
 import { CATEGORIES, type Category } from "@/lib/types";
+import {
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Untrace — find and remove your personal data online",
+  title: { absolute: SITE_TITLE },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
 };
+
 
 const CATEGORY_ORDER: Category[] = [
   "people-search",
@@ -62,7 +71,7 @@ const STEPS = [
   {
     icon: Layers,
     title: "See your exposure",
-    body: "We check 45 directories, databases and archives — and group what we find by how sensitive it is.",
+    body: "We check 45 directories, databases and archives, then group what we find by how sensitive it is.",
   },
   {
     icon: Send,
@@ -80,7 +89,7 @@ const PROMISES = [
   {
     icon: Clock3,
     title: "Followed up",
-    body: "Companies get 30–45 days. If nothing happens, Untrace drafts the follow-up — and tells you where to escalate.",
+    body: "Companies get 30 to 45 days. If nothing happens, Untrace drafts the follow-up, and tells you where to escalate.",
   },
   {
     icon: Lock,
@@ -96,7 +105,7 @@ const QUESTIONS = [
   },
   {
     q: "Does Untrace send emails on my behalf?",
-    a: "No. You review every message and send it from your own mailbox — either with the one-click email link or by pasting it into the company's opt-out form. Nothing leaves your computer unless you press send.",
+    a: "No. You review every message and send it from your own mailbox: either with the one-click email link, or by pasting it into the company's opt-out form. Nothing leaves your computer unless you press send.",
   },
   {
     q: "How long does a removal take?",
@@ -104,7 +113,7 @@ const QUESTIONS = [
   },
   {
     q: "What if a company ignores me or says no?",
-    a: "Two moves. First, send the follow-up — it restates the request and names a deadline. If that's ignored too, you can complain to your data protection authority (or state attorney general) and ask Google to de-index the page. Both paths are one click from your report.",
+    a: "Two moves. First, send the follow-up. It restates the request and names a deadline. If that's ignored too, you can complain to your data protection authority (or state attorney general) and ask Google to de-index the page. Both paths are one click from your report.",
   },
   {
     q: "Why do listings come back after removal?",
@@ -112,9 +121,56 @@ const QUESTIONS = [
   },
   {
     q: "Where do the results come from?",
-    a: "This build ships with a curated directory of 45 real public directories and their official opt-out pages. Scan results are illustrative — a modelled view of what a live scan returns. Removal links, legal templates and the request tracker are fully functional.",
+    a: "This build ships with a curated directory of 45 real public directories and their official opt-out pages. Scan results are illustrative: a modelled view of what a live scan returns. Removal links, legal templates and the request tracker are fully functional.",
   },
 ];
+
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: SITE_NAME,
+      description: SITE_DESCRIPTION,
+      inLanguage: "en",
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/favicon.svg`,
+    },
+    {
+      "@type": "WebApplication",
+      name: SITE_NAME,
+      url: SITE_URL,
+      applicationCategory: "SecurityApplication",
+      operatingSystem: "Any",
+      browserRequirements: "Requires JavaScript",
+      description: SITE_DESCRIPTION,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      featureList: [
+        "Scan 45 people-search sites, marketing databases and ad profiles",
+        "Rank exposures by risk and category",
+        "Generate a deletion request for each company",
+        "Track removal requests and follow-ups",
+      ],
+    },
+    {
+      "@type": "FAQPage",
+      "@id": `${SITE_URL}/#faq`,
+      mainEntity: QUESTIONS.map((item) => ({
+        "@type": "Question",
+        name: item.q,
+        acceptedAnswer: { "@type": "Answer", text: item.a },
+      })),
+    },
+  ],
+};
 
 const sampleFinding = runScan(SAMPLE_PROFILE);
 const sampleRequest = (() => {
@@ -127,6 +183,11 @@ export default function HomePage() {
   return (
     <>
       <SiteHeader />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+      />
 
       <main>
         {/* ── Hero ─────────────────────────────────────────────────────── */}
@@ -143,7 +204,7 @@ export default function HomePage() {
               <p className="mt-7 max-w-xl text-[1.0625rem] leading-[1.7] text-ink-soft">
                 Untrace checks the people-search sites, marketing databases and
                 advertising profiles that hold your name, address and phone
-                number — then writes a deletion request to each owner, ready for
+                number, then writes a deletion request to each owner, ready for
                 you to send.
               </p>
 
@@ -378,7 +439,7 @@ export default function HomePage() {
                 </h2>
                 <p className="mt-4 max-w-xl text-[0.9375rem] leading-relaxed text-ink-soft">
                   Every name below links to that company&apos;s own opt-out page.
-                  You can go around Untrace entirely — we won&apos;t mind.
+                  You can go around Untrace entirely. We won&apos;t mind.
                 </p>
               </div>
               <Link href="/scan" className="btn btn-secondary btn-sm self-start md:self-auto">

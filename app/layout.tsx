@@ -3,31 +3,73 @@ import "@fontsource-variable/inter";
 import "@fontsource/instrument-serif/400.css";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
+import {
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/site";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://untrace.app"),
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
   title: {
-    default: "Untrace — find and remove your personal data online",
-    template: "%s · Untrace",
+    default: SITE_TITLE,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "Untrace maps every people-search site, marketing database and ad profile that holds your name, address and phone number — then writes a deletion request to each owner for you.",
+  description: SITE_DESCRIPTION,
   keywords: [
-    "data removal",
-    "delete personal data",
-    "people search opt out",
-    "privacy",
+    "remove personal data from internet",
     "data broker removal",
+    "people search opt out",
+    "delete personal information",
+    "Spokeo opt out",
+    "Whitepages suppression",
+    "CCPA delete request",
+    "GDPR erasure request",
+    "privacy tool",
+    "Untrace",
   ],
+  authors: [{ name: "Owais Khan", url: SITE_URL }],
+  creator: "Owais Khan",
+  publisher: SITE_NAME,
+  category: "privacy",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
   openGraph: {
-    title: "Untrace — find and remove your personal data online",
-    description:
-      "See everywhere you're listed. Then ask each site to delete it, in writing.",
     type: "website",
-    images: [{ url: "/hero.png", width: 1456, height: 720, alt: "Untrace" }],
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    locale: "en_US",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Untrace: every place the internet keeps your data, in one calm list",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: ["/og.png"],
   },
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: ["/favicon.svg"],
   },
 };
 

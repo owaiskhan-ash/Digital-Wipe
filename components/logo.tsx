@@ -12,7 +12,7 @@ export function Logo({
   return (
     <Link
       href={href}
-      aria-label="Untrace — home"
+      aria-label="Untrace home"
       className={cn("group inline-flex items-center gap-2.5", className)}
     >
       <span className="grid size-9 place-items-center rounded-xl border border-line bg-moss-soft text-moss transition-colors duration-200 group-hover:border-moss/40">

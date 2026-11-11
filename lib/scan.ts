@@ -16,12 +16,12 @@ import { BREACH_CATALOG } from "./breaches";
  * Deterministic matching model
  *
  * The scan is seeded from the profile, so the same person always gets the same
- * report — like a real crawl would. Coverage values in `lib/brokers.ts` stand in
+ * report, like a real crawl would. Coverage values in `lib/brokers.ts` stand in
  * for the share of adults each source is known to hold.
  *
  * To run against live data, replace `runScan` with a provider call (e.g. a data
- * removal API) and map its response into `ScanResult`. Everything downstream —
- * scoring, requests, tracking — stays the same.
+ * removal API) and map its response into `ScanResult`. Everything downstream
+ * (scoring, requests, tracking) stays the same.
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export function hash32(input: string): number {

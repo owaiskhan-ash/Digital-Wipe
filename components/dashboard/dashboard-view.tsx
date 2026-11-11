@@ -136,7 +136,7 @@ export function DashboardView() {
           </h1>
           <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-muted">
             Start with your name and city. In a few seconds you&apos;ll see which
-            directories hold your details — and who to write to about it.
+            directories hold your details, and who to write to about it.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link href="/scan" className="btn btn-primary">
@@ -278,7 +278,7 @@ export function DashboardView() {
           <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
             <ShieldCheck className="size-4 shrink-0 text-moss" strokeWidth={1.8} aria-hidden />
             <p className="text-xs leading-relaxed text-ink-soft">
-              Start with the high-risk people-search listings — they&apos;re the
+              Start with the high-risk people-search listings. They&apos;re the
               quickest to remove and the most damaging to leave up.
             </p>
             <button

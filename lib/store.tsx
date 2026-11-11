@@ -59,7 +59,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      /* storage full or blocked — the session still works in memory */
+      /* storage full or blocked; the session still works in memory */
     }
   }, [state, hydrated]);
 

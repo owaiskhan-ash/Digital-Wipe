@@ -8,7 +8,8 @@ import { SectionLabel } from "@/components/ui";
 export const metadata: Metadata = {
   title: "Our privacy note",
   description:
-    "A short, honest account of what Untrace does with your details: the short version is that it keeps them where they belong — with you.",
+    "A short, honest account of what Untrace does with your details. The short version: they stay in your browser, and nothing is stored on our side.",
+  alternates: { canonical: "/privacy" },
 };
 
 const SECTIONS = [
@@ -30,13 +31,13 @@ const SECTIONS = [
     title: "What we don't do",
     body: [
       "No account, no tracking pixels, no advertising, no analytics scripts, no third-party fonts or CDNs. The fonts are self-hosted and the illustrations are served from the same origin as this page.",
-      "We never send an email for you. A request leaves only when you press “Open in mail app” or paste it into a company's opt-out form — from your own mailbox.",
+      "We never send an email for you. A request leaves only when you press “Open in mail app” or paste it into a company's opt-out form, from your own mailbox.",
     ],
   },
   {
     title: "Other people who see your data",
     body: [
-      "When you open an opt-out page, that company's own site receives the request — under its privacy policy, not ours. When you email a company, your mail provider and theirs carry the message.",
+      "When you open an opt-out page, that company's own site receives the request, under its privacy policy, not ours. When you email a company, your mail provider and theirs carry the message.",
       "The only external links in the product go to those companies, to search engines, and to Have I Been Pwned for breach checks. None of them are loaded inside our pages unless you click.",
     ],
   },
@@ -44,7 +45,7 @@ const SECTIONS = [
     title: "About the results",
     body: [
       "This build is a prototype. The sources, opt-out links and legal templates are real; the listings are modelled so the full flow can be used before any live data provider is connected. Treat the report as a demonstration, not a legal record.",
-      "Nothing here is legal advice. If a company refuses a valid deletion request, a privacy lawyer or your data protection authority is the next step — both options are linked from your report.",
+      "Nothing here is legal advice. If a company refuses a valid deletion request, a privacy lawyer or your data protection authority is the next step. Both options are linked from your report.",
     ],
   },
 ];
@@ -113,7 +114,7 @@ export default function PrivacyPage() {
             <div className="mt-6 rounded-2xl border border-line bg-surface p-6">
               <h2 className="text-lg">Questions about this note</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                This is an independent prototype, so there is no support desk —
+                This is an independent prototype, so there is no support desk,
                 but every claim above can be checked in the source. The scan
                 endpoint lives in{" "}
                 <code className="rounded bg-mist px-1.5 py-0.5 text-[0.75rem] text-ink-soft">

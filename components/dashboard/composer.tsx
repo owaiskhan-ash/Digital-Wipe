@@ -131,12 +131,12 @@ export function Composer({
   const copy = async () => {
     const ok = await copyText(`Subject: ${entry.subject}\n\n${entry.body}`);
     setCopied(ok ? "email" : "none");
-    if (!ok) setNotice("Your browser blocked the clipboard — select the text instead.");
+    if (!ok) setNotice("Your browser blocked the clipboard. Select the text instead.");
   };
 
   const openMail = () => {
     if (!entry.contact.trim()) {
-      setNotice("Add the company's privacy email first — or use their opt-out form.");
+      setNotice("Add the company's privacy email first, or use their opt-out form.");
       return;
     }
     window.location.href = mailtoLink(entry.contact.trim(), entry.subject, entry.body);
@@ -323,7 +323,7 @@ export function Composer({
               <p className="mt-1.5 text-xs text-muted">
                 {entry.finding.contactEmail
                   ? "This is the company's published privacy contact. Change it if their page lists another address."
-                  : "No email is published for this site — use their opt-out form, or paste an address from their privacy page."}
+                  : "No email is published for this site. Use their opt-out form, or paste an address from their privacy page."}
               </p>
             </div>
 
@@ -378,7 +378,7 @@ export function Composer({
               <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted">
                 <Info className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.7} aria-hidden />
                 Cites {CATEGORIES[entry.finding.category].label.toLowerCase()} exposure and gives
-                them {deadline} to answer. Edit anything — it&apos;s your name on it.
+                them {deadline} to answer. Edit anything: it&apos;s your name on it.
               </p>
             </div>
 

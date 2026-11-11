@@ -98,7 +98,7 @@ export function RequestsPanel({
     const ok = await copyText(`Subject: ${followUp.subject}\n\n${followUp.body}`);
     if (ok) {
       setCopied(`follow-${request.id}`);
-      onToast("Follow-up copied — paste it into the same email thread.");
+      onToast("Follow-up copied. Paste it into the same email thread.");
       window.setTimeout(() => setCopied(null), 1800);
     }
   };
@@ -140,7 +140,7 @@ export function RequestsPanel({
           />
         </div>
         <p className="mt-3 text-xs text-muted">
-          Companies have 30–45 days to reply. Untrace keeps the clock for each one.
+          Companies have 30 to 45 days to reply. Untrace keeps the clock for each one.
         </p>
       </div>
 
@@ -290,7 +290,7 @@ export function RequestsPanel({
               {followUpFor === request.id ? (
                 <div className="mt-3 animate-fade-in rounded-xl border border-amber/25 bg-amber-soft px-4 py-3">
                   <p className="text-xs font-medium text-amber">
-                    It&apos;s been a while — here&apos;s the nudge.
+                    It&apos;s been a while. Here&apos;s the nudge.
                   </p>
                   <p className="mt-1 text-[0.6875rem] leading-relaxed text-amber/90">
                     The follow-up restates your original request and gives them ten

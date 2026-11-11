@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   }
   if (city.length < 2) {
     return NextResponse.json(
-      { error: "A city is required — nearly every listing is keyed to a place." },
+      { error: "A city is required, since nearly every listing is keyed to a place." },
       { status: 422 },
     );
   }

@@ -22,7 +22,7 @@ export function BreachesPanel({ breaches }: { breaches: BreachExposure[] }) {
       <div className="mb-5 flex items-start gap-3 rounded-xl border border-line bg-mist/60 px-4 py-3.5">
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.8} aria-hidden />
         <p className="text-xs leading-relaxed text-ink-soft">
-          Breach records can&apos;t be deleted — the lists are public and copied
+          Breach records can&apos;t be deleted: the lists are public and copied
           endlessly. What you can do is make them worthless: rotate the password,
           turn on two-factor, and stop reusing that email for anything that matters.
         </p>

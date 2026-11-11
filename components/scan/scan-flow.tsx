@@ -72,7 +72,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const update = (key: keyof FormState) => (value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
 
-  // Gentle progress while the request is in flight — never stalls at 100%
+  // Gentle progress while the request is in flight; it never stalls at 100%
   // before the result is actually in hand.
   useEffect(() => {
     if (status !== "running") return;
@@ -105,7 +105,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       return;
     }
     if (form.city.trim().length < 2) {
-      setError("Please add your city — almost every listing is keyed to a place.");
+      setError("Please add your city, since almost every listing is keyed to a place.");
       return;
     }
     if (form.emails && !/\S+@\S+\.\S+/.test(form.emails)) {
