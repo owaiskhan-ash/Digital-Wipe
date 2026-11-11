@@ -6,11 +6,12 @@ import {
   Check,
   ExternalLink,
   Mail,
+  Phone,
   Search,
   Send,
   SlidersHorizontal,
 } from "lucide-react";
-import type { Category, Finding, RequestStatus, Risk } from "@/lib/types";
+import type { Category, ExposureMatchType, Finding, RequestStatus, Risk } from "@/lib/types";
 import { CATEGORIES, DATA_LABELS } from "@/lib/types";
 import { cn, formatDate, plural, relativeDays } from "@/lib/utils";
 import { CategoryPill, EffortNote, RiskBadge } from "@/components/ui";
@@ -43,23 +44,46 @@ export function FindingsPanel({
   onCompose: (seeds: ComposerSeed[]) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [matchFilter, setMatchFilter] = useState<ExposureMatchType | "all">("all");
   const [risk, setRisk] = useState<Risk | "all">("all");
   const [category, setCategory] = useState<Category | "all">("all");
   const [selected, setSelected] = useState<string[]>([]);
 
+  const counts = useMemo(() => {
+    const phone = findings.filter(
+      (f) => f.matchType === "phone" || (!f.matchType && f.data.includes("phone") && !f.data.includes("email"))
+    ).length;
+    const email = findings.filter(
+      (f) => f.matchType === "email" || (!f.matchType && f.data.includes("email") && f.matchType !== "phone")
+    ).length;
+    return { phone, email, total: findings.length };
+  }, [findings]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return findings.filter((finding) => {
+      if (matchFilter === "phone") {
+        const isPhone =
+          finding.matchType === "phone" ||
+          (!finding.matchType && finding.data.includes("phone"));
+        if (!isPhone) return false;
+      } else if (matchFilter === "email") {
+        const isEmail =
+          finding.matchType === "email" ||
+          (!finding.matchType && finding.data.includes("email"));
+        if (!isEmail) return false;
+      }
       if (risk !== "all" && finding.risk !== risk) return false;
       if (category !== "all" && finding.category !== category) return false;
       if (!needle) return true;
       return (
         finding.broker.toLowerCase().includes(needle) ||
         finding.domain.toLowerCase().includes(needle) ||
+        (finding.matchedValue && finding.matchedValue.toLowerCase().includes(needle)) ||
         finding.data.some((type) => DATA_LABELS[type].toLowerCase().includes(needle))
       );
     });
-  }, [findings, query, risk, category]);
+  }, [findings, query, matchFilter, risk, category]);
 
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((finding) => selected.includes(finding.id));
@@ -74,10 +98,66 @@ export function FindingsPanel({
 
   const selectedFindings = findings.filter((finding) => selected.includes(finding.id));
 
-  const activeFilters = (risk !== "all" ? 1 : 0) + (category !== "all" ? 1 : 0);
+  const activeFilters =
+    (matchFilter !== "all" ? 1 : 0) +
+    (risk !== "all" ? 1 : 0) +
+    (category !== "all" ? 1 : 0);
 
   return (
     <div>
+      {/* Separate Pinpoint List Switcher: All vs Phone List vs Email List */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-surface p-2">
+        <button
+          type="button"
+          onClick={() => setMatchFilter("all")}
+          className={cn(
+            "rounded-xl px-3.5 py-2 text-xs font-medium transition-colors",
+            matchFilter === "all"
+              ? "bg-moss text-paper"
+              : "text-ink-soft hover:bg-mist"
+          )}
+        >
+          All Exposures ({counts.total})
+        </button>
+        <button
+          type="button"
+          onClick={() => setMatchFilter("phone")}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors",
+            matchFilter === "phone"
+              ? "bg-moss text-paper"
+              : "text-ink-soft hover:bg-mist"
+          )}
+        >
+          <Phone className="size-3.5" />
+          Phone Number List ({counts.phone})
+        </button>
+        <button
+          type="button"
+          onClick={() => setMatchFilter("email")}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium transition-colors",
+            matchFilter === "email"
+              ? "bg-moss text-paper"
+              : "text-ink-soft hover:bg-mist"
+          )}
+        >
+          <Mail className="size-3.5" />
+          Email Address List ({counts.email})
+        </button>
+
+        {matchFilter !== "all" && filtered.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onCompose(filtered.map((finding) => ({ finding })))}
+            className="btn btn-primary btn-xs ml-auto"
+          >
+            <Send className="size-3" />
+            Email All {filtered.length} {matchFilter === "phone" ? "Phone" : "Email"} Sites
+          </button>
+        )}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
@@ -90,7 +170,7 @@ export function FindingsPanel({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search a site or a kind of data"
+              placeholder="Search by website, phone number, email, or data type"
               aria-label="Search findings"
               className="field py-2.5 pl-10 text-sm"
             />
@@ -106,6 +186,7 @@ export function FindingsPanel({
                 type="button"
                 className="text-xs text-moss underline decoration-moss/30 underline-offset-4 hover:decoration-moss"
                 onClick={() => {
+                  setMatchFilter("all");
                   setRisk("all");
                   setCategory("all");
                 }}
@@ -218,7 +299,7 @@ export function FindingsPanel({
           <div className="rounded-xl border border-dashed border-line-strong px-6 py-14 text-center">
             <p className="text-sm text-ink">Nothing matches those filters.</p>
             <p className="mt-1 text-xs text-muted">
-              Try &ldquo;all risk&rdquo; or clear the search.
+              Try switching to &ldquo;All Exposures&rdquo; or clear the search.
             </p>
           </div>
         ) : null}
@@ -273,7 +354,17 @@ function FindingRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            {finding.discoveredByAgent ? (
+            {finding.matchType === "phone" ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-moss/30 bg-moss-soft px-2 py-0.5 font-mono text-[0.6875rem] font-medium text-moss-deep">
+                <Phone className="size-3" aria-hidden />
+                {finding.matchedValue || "Phone Match"}
+              </span>
+            ) : finding.matchType === "email" ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-line-strong bg-mist px-2 py-0.5 font-mono text-[0.6875rem] font-medium text-ink">
+                <Mail className="size-3 text-moss" aria-hidden />
+                {finding.matchedValue || "Email Match"}
+              </span>
+            ) : finding.discoveredByAgent ? (
               <span className="inline-flex items-center gap-1 rounded-md border border-moss/25 bg-moss-soft px-2 py-0.5 text-[0.6875rem] font-medium text-moss-deep">
                 <Bot className="size-3" aria-hidden />
                 {finding.discoveredByAgent}

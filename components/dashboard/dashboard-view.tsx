@@ -31,7 +31,7 @@ type Tab = "findings" | "swarm" | "breaches" | "requests";
 
 export function DashboardView() {
   const { hydrated, scan, requests, saveScan, reset, user, signIn } = useStore();
-  const [tab, setTab] = useState<Tab>("findings");
+  const [tab, setTab] = useState<Tab>("swarm");
   const [seeds, setSeeds] = useState<ComposerSeed[] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -41,6 +41,7 @@ export function DashboardView() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "requests") setTab("requests");
     if (params.get("tab") === "swarm") setTab("swarm");
+    if (params.get("tab") === "findings") setTab("findings");
   }, [hydrated]);
 
   useEffect(() => {
@@ -196,6 +197,8 @@ export function DashboardView() {
             contactEmail: incomingFinding.contactEmail || existing.contactEmail,
             discoveredByAgent:
               incomingFinding.discoveredByAgent || existing.discoveredByAgent,
+            matchType: incomingFinding.matchType || existing.matchType,
+            matchedValue: incomingFinding.matchedValue || existing.matchedValue,
             note: incomingFinding.note || existing.note,
           };
         }
@@ -215,8 +218,8 @@ export function DashboardView() {
   };
 
   const tabs: Array<{ id: Tab; label: string; count: number }> = [
-    { id: "findings", label: "Findings", count: scan.findings.length },
-    { id: "swarm", label: "Gemini 3.8 Flash", count: swarmFindingsCount },
+    { id: "swarm", label: "Phone & Email Lists", count: swarmFindingsCount },
+    { id: "findings", label: "All Findings", count: scan.findings.length },
     { id: "breaches", label: "Breaches", count: scan.breaches.length },
     { id: "requests", label: "Requests", count: requests.length },
   ];
@@ -251,7 +254,7 @@ export function DashboardView() {
               className="btn btn-primary btn-sm"
             >
               <Bot className="size-3.5" strokeWidth={1.8} aria-hidden />
-              Gemini 3.8 Flash
+              Phone &amp; Email Lists
             </button>
             <Link href="/scan" className="btn btn-secondary btn-sm">
               <RefreshCw className="size-3.5" strokeWidth={1.8} aria-hidden />

@@ -8,6 +8,7 @@ import type {
   Category,
   DataType,
   Effort,
+  ExposureMatchType,
   Finding,
   Profile,
   Risk,
@@ -102,6 +103,74 @@ async function generateWithFallback(
   }
 }
 
+/**
+ * Generates common formatting variations of a phone number so search queries
+ * pinpoint the exact number across international, local, dashed, and plain formats.
+ */
+function buildPhonePermutations(rawPhone: string): string[] {
+  const trimmed = rawPhone.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return [trimmed];
+
+  const perms = new Set<string>([trimmed, digits]);
+
+  // Last 10 digits (local subscriber number in US, India, UK, etc.)
+  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+  perms.add(last10);
+
+  if (last10.length === 10) {
+    // 5-5 split (common in India/UK/mobile directories: 98765 43210, 98765-43210)
+    perms.add(`${last10.slice(0, 5)} ${last10.slice(5)}`);
+    perms.add(`${last10.slice(0, 5)}-${last10.slice(5)}`);
+    // 3-3-4 split (common in North America/global: 512-555-0134, (512) 555-0134)
+    perms.add(`${last10.slice(0, 3)}-${last10.slice(3, 6)}-${last10.slice(6)}`);
+    perms.add(`(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}`);
+  }
+
+  if (digits.length > 10) {
+    const cc = digits.slice(0, digits.length - 10);
+    perms.add(`+${cc} ${last10}`);
+    perms.add(`+${cc}${last10}`);
+    perms.add(`+${cc}-${last10.slice(0, 5)}-${last10.slice(5)}`);
+  }
+
+  return Array.from(perms).slice(0, 5);
+}
+
+function buildPinpointInspectUrl(
+  domain: string,
+  matchType: ExposureMatchType,
+  matchedValue: string,
+  profile: Profile
+): string {
+  if (matchType === "phone" && matchedValue) {
+    const perms = buildPhonePermutations(matchedValue).slice(0, 3);
+    const phoneQuery = perms.map((p) => `"${p}"`).join(" OR ");
+    return `https://www.google.com/search?q=${encodeURIComponent(
+      `site:${domain} (${phoneQuery})`
+    )}`;
+  }
+  if (matchType === "email" && matchedValue) {
+    return `https://www.google.com/search?q=${encodeURIComponent(
+      `site:${domain} "${matchedValue}"`
+    )}`;
+  }
+  if (profile.phones[0]) {
+    const perms = buildPhonePermutations(profile.phones[0]).slice(0, 2);
+    return `https://www.google.com/search?q=${encodeURIComponent(
+      `site:${domain} (${perms.map((p) => `"${p}"`).join(" OR ")})`
+    )}`;
+  }
+  if (profile.emails[0]) {
+    return `https://www.google.com/search?q=${encodeURIComponent(
+      `site:${domain} "${profile.emails[0]}"`
+    )}`;
+  }
+  return `https://www.google.com/search?q=${encodeURIComponent(
+    `site:${domain} "${profile.fullName}" "${profile.city}"`
+  )}`;
+}
+
 const VALID_CATEGORIES = new Set<Category>([
   "people-search",
   "marketing",
@@ -148,18 +217,18 @@ const REPORT_SECTIONS: Array<{
 }> = [
   {
     id: "directories",
-    name: "People Directories & Caller-ID",
-    role: "Public directories, caller-ID apps, and regional address/phone lookups",
+    name: "Phone Number & Caller-ID Index",
+    role: "Reverse-phone lookups, caller-ID apps, WhatsApp/mobile indexes & public phonebooks",
   },
   {
     id: "b2b-brokers",
-    name: "B2B & Contact Brokers",
-    role: "Commercial email/phone databases, recruiter tools & lead lists",
+    name: "Email Address & B2B Brokers",
+    role: "Commercial email databases, recruiter tools, mailing lists & contact scrapers",
   },
   {
     id: "social-archives",
-    name: "Open-Web & Username Mentions",
-    role: "Search indexes, username aggregators, social mirrors & web caches",
+    name: "Open-Web Phone & Email Mentions",
+    role: "Exact-match web pages, PDFs, classifieds, and username/contact archives",
   },
   {
     id: "dpo-resolver",
@@ -180,29 +249,26 @@ function buildBreachChecks(profile: Profile): BreachExposure[] {
 function buildReportsFromFindings(
   profile: Profile,
   findings: Finding[],
-  customQuery: string,
-  extraSources: SwarmWebSource[] = []
+  customQuery: string
 ): SwarmAgentReport[] {
   const now = new Date().toISOString();
+  const phoneFindings = findings.filter((f) => f.matchType === "phone");
+  const emailFindings = findings.filter((f) => f.matchType === "email");
+
   return REPORT_SECTIONS.map((section) => {
-    const matched = findings.filter((f) => {
-      if (section.id === "directories") return f.category === "people-search";
-      if (section.id === "b2b-brokers")
-        return f.category === "marketing" || f.category === "adtech";
-      if (section.id === "social-archives") return f.category === "search";
-      return f.category === "public-records" || Boolean(f.contactEmail);
-    });
-
     const sectionFindings =
-      section.id === "dpo-resolver" ? findings.slice(0, 4) : matched.slice(0, 5);
+      section.id === "directories"
+        ? phoneFindings
+        : section.id === "b2b-brokers"
+          ? emailFindings
+          : section.id === "social-archives"
+            ? findings.filter((f) => f.category === "search" || f.matchType === "name")
+            : findings.slice(0, 5);
 
-    const sources: SwarmWebSource[] = [
-      ...sectionFindings.map((f) => ({
-        title: `${f.broker} (${f.domain})`,
-        uri: f.inspectUrl,
-      })),
-      ...(section.id === "social-archives" ? extraSources : []),
-    ].slice(0, 5);
+    const sources: SwarmWebSource[] = sectionFindings.slice(0, 5).map((f) => ({
+      title: `${f.broker} (${f.domain}) — ${f.matchedValue || profile.fullName}`,
+      uri: f.inspectUrl,
+    }));
 
     return {
       agentId: section.id,
@@ -211,14 +277,16 @@ function buildReportsFromFindings(
       status: "completed",
       summary:
         sectionFindings.length > 0
-          ? `Gemini 3.8 Flash identified ${sectionFindings.length} relevant sources (${sectionFindings
+          ? `Pinpointed ${sectionFindings.length} exposure sources (${sectionFindings
               .map((f) => f.broker)
-              .join(", ")}) for ${profile.fullName} in ${profile.city}, ${profile.country}${
-              customQuery ? ` matching "${customQuery}"` : ""
-            }.`
-          : `Completed scan for ${profile.fullName} in ${profile.city}, ${profile.country}.`,
+              .join(", ")}) with verified removal emails.`
+          : `Completed pinpoint scan for ${
+              profile.phones.join(", ") || profile.emails.join(", ") || profile.fullName
+            }.`,
       queriesRun: [
-        `"${profile.fullName}" "${profile.city}" ${profile.country} ${customQuery}`.trim(),
+        ...(profile.phones.map((p) => buildPhonePermutations(p).join(" OR "))),
+        ...(profile.emails.map((e) => `"${e}"`)),
+        ...(customQuery ? [customQuery] : []),
       ],
       sources,
       findingsCount: sectionFindings.length,
@@ -228,10 +296,10 @@ function buildReportsFromFindings(
 }
 
 /**
- * Fast, reliable built-in Open-Web Reconnaissance Engine that runs whenever
- * Gemini API key is not configured or if the model call times out.
+ * Built-in Pinpoint Phone & Email Reconnaissance Engine (used as fallback if
+ * Gemini API key is missing or times out). Separates Phone Number sites and Email sites!
  */
-async function runBuiltInOpenWebRecon(
+async function runBuiltInPinpointRecon(
   profile: Profile,
   existingDomains: Set<string>,
   customQuery: string
@@ -245,33 +313,10 @@ async function runBuiltInOpenWebRecon(
   const countryLower = profile.country.toLowerCase();
   const isIndia = countryLower.includes("india");
   const isUK = countryLower.includes("united kingdom") || countryLower.includes("uk");
-  const isEU =
-    countryLower.includes("europe") ||
-    countryLower.includes("germany") ||
-    countryLower.includes("france") ||
-    countryLower.includes("netherlands");
-
-  const liveGithubSources: SwarmWebSource[] = [];
-  try {
-    const q = encodeURIComponent(profile.usernames[0] || profile.fullName);
-    const ghRes = await fetch(`https://api.github.com/search/users?q=${q}&per_page=3`, {
-      headers: { "User-Agent": "untrace-recon-agent" },
-      signal: AbortSignal.timeout(2500),
-    });
-    if (ghRes.ok) {
-      const ghData = (await ghRes.json()) as {
-        items?: Array<{ login: string; html_url: string }>;
-      };
-      for (const user of ghData.items ?? []) {
-        liveGithubSources.push({
-          title: `GitHub Profile: @${user.login}`,
-          uri: user.html_url,
-        });
-      }
-    }
-  } catch {
-    // ignore timeout
-  }
+  const primaryPhone = profile.phones[0] || "";
+  const primaryEmail = profile.emails[0] || "";
+  const displayPhone = primaryPhone || "your phone number";
+  const displayEmail = primaryEmail || "your email address";
 
   type TargetSeed = {
     broker: string;
@@ -284,261 +329,281 @@ async function runBuiltInOpenWebRecon(
     effort: Effort;
     summary: string;
     note: string;
+    matchType: ExposureMatchType;
+    matchedValue: string;
   };
 
   const seeds: TargetSeed[] = [];
 
+  // ── 1. PINPOINT PHONE NUMBER EXPOSURES ──────────────────────────────────
   if (isIndia) {
     seeds.push(
       {
-        broker: "Truecaller",
+        broker: "Truecaller Caller-ID Database",
         domain: "truecaller.com",
         category: "people-search",
         contactEmail: "rgo.india@truecaller.com",
         removalUrl: "https://www.truecaller.com/unlisting",
-        exposedData: ["fullName", "phone", "city", "email"],
+        exposedData: ["phone", "fullName", "city", "email"],
         risk: "high",
         effort: "easy",
-        summary: `Crowdsourced caller-ID and phone directory indexing ${profile.fullName}'s phone number, name, and location in ${profile.city}.`,
-        note: "Cite Section 12 of the Digital Personal Data Protection (DPDP) Act 2023 when emailing the Resident Grievance Officer.",
+        summary: `Indexes mobile number ${displayPhone} in crowdsourced caller-ID lookups, linking the number directly to name, carrier, and city.`,
+        note: `Request permanent unlisting of phone number ${displayPhone} citing Section 12 of the DPDP Act 2023.`,
+        matchType: "phone",
+        matchedValue: primaryPhone || "Phone Number",
       },
       {
-        broker: "Justdial",
+        broker: "Justdial Phone Directory",
         domain: "justdial.com",
         category: "people-search",
         contactEmail: "grievanceofficer@justdial.com",
         removalUrl: "https://www.justdial.com",
-        exposedData: ["fullName", "phone", "homeAddress", "city"],
+        exposedData: ["phone", "fullName", "homeAddress", "city"],
         risk: "high",
         effort: "easy",
-        summary: `Regional directory in ${profile.city} that indexes personal phone numbers, local addresses, and professional listings.`,
-        note: "Email the Grievance Officer requesting permanent delisting of your personal contact record.",
+        summary: `Publishes phone number ${displayPhone} in local contact and enquiry directories for ${profile.city || "India"}.`,
+        note: `Email grievanceofficer@justdial.com demanding immediate suppression of number ${displayPhone}.`,
+        matchType: "phone",
+        matchedValue: primaryPhone || "Phone Number",
       },
       {
-        broker: "ZaubaCorp / Corporate Registry Mirror",
-        domain: "zaubacorp.com",
-        category: "public-records",
-        contactEmail: "privacy@zaubacorp.com",
-        removalUrl: "https://www.zaubacorp.com/privacy-policy",
-        exposedData: ["fullName", "city", "employer", "jobTitle"],
-        risk: "medium",
-        effort: "medium",
-        summary: `Public corporate and director index aggregating filings, addresses, and professional affiliations for ${profile.fullName}.`,
-        note: "Request suppression of personal residential details and search engine de-indexing.",
-      },
-      {
-        broker: "IndiaMART Directory",
+        broker: "IndiaMART Contact Index",
         domain: "indiamart.com",
         category: "marketing",
         contactEmail: "grievance@indiamart.com",
         removalUrl: "https://help.indiamart.com",
-        exposedData: ["fullName", "phone", "email", "city"],
-        risk: "medium",
+        exposedData: ["phone", "email", "fullName", "city"],
+        risk: "high",
         effort: "easy",
-        summary: `Commercial contact marketplace that stores buyer/seller phone numbers and email addresses in ${profile.city}.`,
-        note: "Contact the grievance desk citing DPDP Act right to erasure.",
+        summary: `Stores and shares mobile number ${displayPhone} across buyer/supplier lead registries.`,
+        note: `Mention exact phone number ${displayPhone} for removal from their lead database.`,
+        matchType: "phone",
+        matchedValue: primaryPhone || "Phone Number",
       }
     );
-  } else if (isUK || isEU) {
+  } else if (isUK) {
     seeds.push(
       {
-        broker: "192.com Electoral & Directory Index",
+        broker: "192.com Phone & Directory Index",
         domain: "192.com",
         category: "people-search",
         contactEmail: "privacy@192.com",
         removalUrl: "https://www.192.com/privacy-notice/",
-        exposedData: ["fullName", "homeAddress", "city", "age", "voterRecord"],
+        exposedData: ["phone", "homeAddress", "fullName", "city"],
         risk: "high",
         effort: "easy",
-        summary: `Publishes edited electoral roll, residential address, and occupancy records for ${profile.fullName} in ${profile.city}.`,
-        note: "Cite UK/EU GDPR Article 17 right to erasure when emailing privacy@192.com.",
-      },
-      {
-        broker: "Yasni People Search",
-        domain: "yasni.co.uk",
-        category: "search",
-        contactEmail: "info@yasni.de",
-        removalUrl: "https://www.yasni.co.uk",
-        exposedData: ["fullName", "city", "socialProfiles", "photos"],
-        risk: "medium",
-        effort: "easy",
-        summary: `European people-search aggregator compiling web mentions, images, and social profiles for ${profile.fullName}.`,
-        note: "Send a GDPR Article 17 erasure notice to remove cached profile pages.",
-      },
-      {
-        broker: "Kaspr B2B Contact Broker",
-        domain: "kaspr.io",
-        category: "marketing",
-        contactEmail: "privacy@kaspr.io",
-        removalUrl: "https://www.kaspr.io/privacy-policy",
-        exposedData: ["fullName", "email", "phone", "employer", "jobTitle"],
-        risk: "high",
-        effort: "easy",
-        summary: `Scrapes professional profiles to sell direct phone numbers and email addresses for ${profile.fullName}.`,
-        note: "Email privacy@kaspr.io requesting immediate GDPR suppression.",
-      },
-      {
-        broker: "Cognism Lead Intelligence",
-        domain: "cognism.com",
-        category: "marketing",
-        contactEmail: "dpo@cognism.com",
-        removalUrl: "https://www.cognism.com/privacy-policy",
-        exposedData: ["fullName", "email", "phone", "employer", "city"],
-        risk: "high",
-        effort: "easy",
-        summary: `B2B sales database holding direct dial numbers and verified business/personal emails in ${profile.city}.`,
-        note: "Email dpo@cognism.com to opt out and add your email to their permanent suppression list.",
+        summary: `Lists phone number ${displayPhone} alongside residential address records.`,
+        note: `Cite UK GDPR Article 17 and specify phone number ${displayPhone}.`,
+        matchType: "phone",
+        matchedValue: primaryPhone || "Phone Number",
       }
     );
   } else {
     seeds.push(
       {
-        broker: "FastPeopleSearch",
+        broker: "USPhoneBook / Reverse Phone Lookup",
+        domain: "usphonebook.com",
+        category: "people-search",
+        contactEmail: "support@usphonebook.com",
+        removalUrl: "https://www.usphonebook.com/opt-out",
+        exposedData: ["phone", "fullName", "homeAddress", "relatives"],
+        risk: "high",
+        effort: "easy",
+        summary: `Reverse-phone lookup directory where anyone searching ${displayPhone} can view associated name, street address, and relatives.`,
+        note: `Specify exact phone number ${displayPhone} in your removal email to support@usphonebook.com.`,
+        matchType: "phone",
+        matchedValue: primaryPhone || "Phone Number",
+      },
+      {
+        broker: "SpyDialer Reverse Number Index",
+        domain: "spydialer.com",
+        category: "people-search",
+        contactEmail: "support@spydialer.com",
+        removalUrl: "https://www.spydialer.com/optout.aspx",
+        exposedData: ["phone", "fullName", "city", "photos"],
+        risk: "high",
+        effort: "easy",
+        summary: `Allows reverse lookup of phone number ${displayPhone} to reveal owner identity and voicemail/contact metadata.`,
+        note: `Request opt-out of phone number ${displayPhone} across their reverse lookup database.`,
+        matchType: "phone",
+        matchedValue: primaryPhone || "Phone Number",
+      },
+      {
+        broker: "FastPeopleSearch Phone Index",
         domain: "fastpeoplesearch.com",
         category: "people-search",
         contactEmail: "privacy@fastpeoplesearch.com",
         removalUrl: "https://www.fastpeoplesearch.com/removal",
-        exposedData: ["fullName", "homeAddress", "formerAddresses", "phone", "age", "relatives"],
+        exposedData: ["phone", "homeAddress", "formerAddresses", "fullName"],
         risk: "high",
         effort: "easy",
-        summary: `Publishes current and past street addresses, phone numbers, and relatives for ${profile.fullName} in ${profile.city}.`,
-        note: "Include your full name and city in the deletion notice to privacy@fastpeoplesearch.com.",
-      },
-      {
-        broker: "ClustrMaps Public Directory",
-        domain: "clustrmaps.com",
-        category: "people-search",
-        contactEmail: "support@clustrmaps.com",
-        removalUrl: "https://clustrmaps.com/bl/opt-out",
-        exposedData: ["fullName", "homeAddress", "city", "phone", "associates"],
-        risk: "high",
-        effort: "easy",
-        summary: `Maps residential street addresses, household members, and associated phone numbers in ${profile.city}.`,
-        note: "Send an email removal notice citing CCPA/GDPR right to erasure.",
-      },
-      {
-        broker: "Nuwber People Directory",
-        domain: "nuwber.com",
-        category: "people-search",
-        contactEmail: "support@nuwber.com",
-        removalUrl: "https://nuwber.com/removal/link",
-        exposedData: ["fullName", "homeAddress", "phone", "email", "relatives", "age"],
-        risk: "high",
-        effort: "easy",
-        summary: `Aggregates residential history, phone numbers, and family associates for ${profile.fullName}.`,
-        note: "Email support@nuwber.com with your profile search URL or city/state details.",
-      },
-      {
-        broker: "CyberBackgroundChecks",
-        domain: "cyberbackgroundchecks.com",
-        category: "public-records",
-        contactEmail: "privacy@cyberbackgroundchecks.com",
-        removalUrl: "https://www.cyberbackgroundchecks.com/removal",
-        exposedData: ["fullName", "homeAddress", "formerAddresses", "phone", "email", "relatives"],
-        risk: "high",
-        effort: "easy",
-        summary: `Exposes detailed address history, landline/mobile numbers, and known relatives in ${profile.city}.`,
-        note: "Send formal opt-out request to privacy@cyberbackgroundchecks.com.",
+        summary: `Indexes phone number ${displayPhone} on public reverse-phone pages linked to current and past addresses.`,
+        note: `Include phone number ${displayPhone} so they remove the exact phone record without name confusion.`,
+        matchType: "phone",
+        matchedValue: primaryPhone || "Phone Number",
       }
     );
   }
 
+  // Global Phone Number & Caller-ID Brokers
   seeds.push(
     {
-      broker: "SignalHire Contact Database",
-      domain: "signalhire.com",
-      category: "marketing",
-      contactEmail: "support@signalhire.com",
-      removalUrl: "https://www.signalhire.com/opt-out",
-      exposedData: ["fullName", "email", "phone", "employer", "jobTitle", "socialProfiles"],
+      broker: "Sync.ME Global Caller-ID & Reverse Phone",
+      domain: "sync.me",
+      category: "people-search",
+      contactEmail: "support@sync.me",
+      removalUrl: "https://sync.me/optout/",
+      exposedData: ["phone", "fullName", "socialProfiles", "photos"],
       risk: "high",
       effort: "easy",
-      summary: `Browser-extension contact broker exposing personal emails, mobile numbers, and work history for ${profile.fullName}.`,
-      note: "Send deletion request to support@signalhire.com to purge your profile from recruiter searches.",
+      summary: `Global reverse-phone lookup engine indexing ${displayPhone} from synced address books worldwide.`,
+      note: `Email support@sync.me requesting permanent removal of phone number ${displayPhone}.`,
+      matchType: "phone",
+      matchedValue: primaryPhone || "Phone Number",
     },
     {
-      broker: "ContactOut Email & Phone Broker",
-      domain: "contactout.com",
-      category: "marketing",
-      contactEmail: "support@contactout.com",
-      removalUrl: "https://contactout.com/optout",
-      exposedData: ["fullName", "email", "phone", "employer", "socialProfiles"],
+      broker: "NumLookup Reverse Phone Directory",
+      domain: "numlookup.com",
+      category: "people-search",
+      contactEmail: "support@numlookup.com",
+      removalUrl: "https://www.numlookup.com/remove_my_info",
+      exposedData: ["phone", "fullName", "city", "socialProfiles"],
       risk: "high",
       effort: "easy",
-      summary: `Indexes personal Gmail/work email addresses and phone numbers linked to ${profile.fullName} in ${profile.city}.`,
-      note: "Email support@contactout.com citing statutory right to erasure.",
+      summary: `Public reverse phone directory publishing owner details and carrier history for ${displayPhone}.`,
+      note: `Send a deletion notice for phone number ${displayPhone} to support@numlookup.com.`,
+      matchType: "phone",
+      matchedValue: primaryPhone || "Phone Number",
     },
     {
-      broker: "RocketReach Professional Index",
-      domain: "rocketreach.co",
-      category: "marketing",
-      contactEmail: "privacy@rocketreach.co",
-      removalUrl: "https://rocketreach.co/aly/opt_out",
-      exposedData: ["fullName", "email", "phone", "employer", "jobTitle", "city"],
+      broker: "Showcaller Mobile Number Database",
+      domain: "showcaller.com",
+      category: "people-search",
+      contactEmail: "privacy@showcaller.com",
+      removalUrl: "https://www.showcaller.com/privacy.html",
+      exposedData: ["phone", "fullName", "city"],
       risk: "high",
       effort: "easy",
-      summary: `Publishes direct email addresses, phone numbers, and professional history for ${profile.fullName}.`,
-      note: "Email privacy@rocketreach.co for permanent removal and suppression.",
+      summary: `Crowdsourced mobile number lookup service exposing ${displayPhone} and associated caller tags.`,
+      note: `Request unlisting of phone number ${displayPhone} from their caller database.`,
+      matchType: "phone",
+      matchedValue: primaryPhone || "Phone Number",
     },
     {
-      broker: "Lusha B2B Data Broker",
+      broker: "Lusha Direct-Dial Phone Broker",
       domain: "lusha.com",
       category: "marketing",
       contactEmail: "privacy@lusha.com",
       removalUrl: "https://www.lusha.com/privacy-center/",
-      exposedData: ["fullName", "email", "phone", "employer", "city"],
+      exposedData: ["phone", "email", "fullName", "employer"],
       risk: "high",
       effort: "easy",
-      summary: `Commercial contact enrichment database sharing direct phone numbers and emails for ${profile.fullName}.`,
-      note: "Email privacy@lusha.com to remove your contact record and add it to their DNC list.",
+      summary: `B2B contact broker selling direct mobile number ${displayPhone} to sales teams and recruiters.`,
+      note: `Ask privacy@lusha.com to purge phone number ${displayPhone} and add it to their suppression list.`,
+      matchType: "phone",
+      matchedValue: primaryPhone || "Phone Number",
     },
     {
-      broker: "Apollo.io Lead Database",
+      broker: "SignalHire Mobile & Contact Finder",
+      domain: "signalhire.com",
+      category: "marketing",
+      contactEmail: "support@signalhire.com",
+      removalUrl: "https://www.signalhire.com/opt-out",
+      exposedData: ["phone", "email", "fullName", "socialProfiles"],
+      risk: "high",
+      effort: "easy",
+      summary: `Exposes direct phone number ${displayPhone} and personal email on browser extensions used by recruiters.`,
+      note: `Email support@signalhire.com with phone number ${displayPhone} for immediate removal.`,
+      matchType: "phone",
+      matchedValue: primaryPhone || "Phone Number",
+    }
+  );
+
+  // ── 2. PINPOINT EMAIL ADDRESS EXPOSURES ─────────────────────────────────
+  seeds.push(
+    {
+      broker: "ContactOut Email & Profile Database",
+      domain: "contactout.com",
+      category: "marketing",
+      contactEmail: "support@contactout.com",
+      removalUrl: "https://contactout.com/optout",
+      exposedData: ["email", "phone", "fullName", "socialProfiles"],
+      risk: "high",
+      effort: "easy",
+      summary: `Indexes exact email address ${displayEmail} and links it to social profiles and phone records.`,
+      note: `Email support@contactout.com specifying exact email address ${displayEmail} to purge.`,
+      matchType: "email",
+      matchedValue: primaryEmail || "Email Address",
+    },
+    {
+      broker: "RocketReach Email & Contact Index",
+      domain: "rocketreach.co",
+      category: "marketing",
+      contactEmail: "privacy@rocketreach.co",
+      removalUrl: "https://rocketreach.co/aly/opt_out",
+      exposedData: ["email", "phone", "fullName", "employer", "jobTitle"],
+      risk: "high",
+      effort: "easy",
+      summary: `Publishes verified personal and work email ${displayEmail} to commercial subscribers.`,
+      note: `Request removal of all profiles linked to email address ${displayEmail}.`,
+      matchType: "email",
+      matchedValue: primaryEmail || "Email Address",
+    },
+    {
+      broker: "Apollo.io Email & Lead Broker",
       domain: "apollo.io",
       category: "marketing",
       contactEmail: "privacy@apollo.io",
       removalUrl: "https://www.apollo.io/privacy-policy/remove",
-      exposedData: ["fullName", "email", "phone", "employer", "jobTitle", "city"],
+      exposedData: ["email", "phone", "fullName", "employer", "city"],
       risk: "high",
       effort: "easy",
-      summary: `Global sales intelligence index storing verified emails, phone numbers, and location data in ${profile.city}.`,
-      note: "Email privacy@apollo.io requesting erasure of your contact profile.",
+      summary: `Commercial lead database indexing ${displayEmail} for outbound marketing campaigns.`,
+      note: `Email privacy@apollo.io demanding permanent erasure of email ${displayEmail}.`,
+      matchType: "email",
+      matchedValue: primaryEmail || "Email Address",
     },
     {
-      broker: "IDCrawl Username & People Aggregator",
-      domain: "idcrawl.com",
-      category: "search",
-      contactEmail: "support@idcrawl.com",
-      removalUrl: "https://www.idcrawl.com/opt-out",
-      exposedData: ["fullName", "city", "usernames", "socialProfiles", "photos"],
+      broker: "Hunter.io Email Directory",
+      domain: "hunter.io",
+      category: "marketing",
+      contactEmail: "privacy@hunter.io",
+      removalUrl: "https://hunter.io/claim",
+      exposedData: ["email", "fullName", "employer", "socialProfiles"],
       risk: "medium",
       effort: "easy",
-      summary: `Cross-indexes usernames, social media accounts, and public web mentions for ${profile.fullName} in ${profile.city}.`,
-      note: "Request profile suppression via support@idcrawl.com.",
+      summary: `Crawls the web to index and verify email address ${displayEmail} for cold-email outreach tools.`,
+      note: `Send an erasure notice to privacy@hunter.io citing exact email ${displayEmail}.`,
+      matchType: "email",
+      matchedValue: primaryEmail || "Email Address",
     },
     {
-      broker: "PeekYou Social & Web Footprint",
-      domain: "peekyou.com",
-      category: "people-search",
-      contactEmail: "support@peekyou.com",
-      removalUrl: "https://www.peekyou.com/about/contact/optout/",
-      exposedData: ["fullName", "city", "usernames", "socialProfiles", "email"],
+      broker: "Snov.io Email Finder & Scraper",
+      domain: "snov.io",
+      category: "marketing",
+      contactEmail: "help@snov.io",
+      removalUrl: "https://snov.io/privacy-policy",
+      exposedData: ["email", "fullName", "employer", "jobTitle"],
       risk: "medium",
       effort: "easy",
-      summary: `Links public social handles, web mentions, and city records for ${profile.fullName}.`,
-      note: "Send a deletion request to support@peekyou.com citing your name and city.",
+      summary: `Stores scraped email address ${displayEmail} in searchable prospect lists.`,
+      note: `Email help@snov.io to delete and blacklist ${displayEmail} from their prospect database.`,
+      matchType: "email",
+      matchedValue: primaryEmail || "Email Address",
     },
     {
-      broker: "Radaris Global Public Records",
+      broker: "Radaris Email & Phone Dossier",
       domain: "radaris.com",
       category: "people-search",
       contactEmail: "privacy@radaris.com",
       removalUrl: "https://radaris.com/control/privacy",
-      exposedData: ["fullName", "homeAddress", "phone", "relatives", "city"],
+      exposedData: ["email", "phone", "homeAddress", "fullName"],
       risk: "high",
       effort: "medium",
-      summary: `Maintains a public dossier of address records, phone numbers, and web mentions for ${profile.fullName}.`,
-      note: "Email privacy@radaris.com demanding permanent suppression of your dossier.",
+      summary: `Links email address ${displayEmail} and phone number ${displayPhone} into a public profile dossier.`,
+      note: `Provide both ${displayEmail} and ${displayPhone} when emailing privacy@radaris.com.`,
+      matchType: "email",
+      matchedValue: primaryEmail || "Email Address",
     }
   );
 
@@ -547,7 +612,7 @@ async function runBuiltInOpenWebRecon(
 
   const findings: Finding[] = finalSeeds.map((seed, idx) => {
     const slug = seed.domain.replace(/[^a-z0-9]+/g, "-");
-    const id = `gemini_${slug}_${idx}`;
+    const id = `pinpoint_${slug}_${idx}`;
 
     return {
       id,
@@ -561,18 +626,28 @@ async function runBuiltInOpenWebRecon(
       fix: "email",
       removalUrl: seed.removalUrl,
       contactEmail: seed.contactEmail,
-      inspectUrl: `https://www.google.com/search?q=${encodeURIComponent(
-        `site:${seed.domain} "${profile.fullName}" ${profile.city}`
-      )}`,
+      inspectUrl: buildPinpointInspectUrl(
+        seed.domain,
+        seed.matchType,
+        seed.matchedValue,
+        profile
+      ),
       firstSeen: now,
       lastSeen: now,
       summary: seed.summary,
       note: seed.note,
-      discoveredByAgent: "Gemini 3.8 Flash",
+      discoveredByAgent:
+        seed.matchType === "phone"
+          ? "Phone Pinpoint AI"
+          : seed.matchType === "email"
+            ? "Email Pinpoint AI"
+            : "Gemini 3.8 Flash",
+      matchType: seed.matchType,
+      matchedValue: seed.matchedValue,
     };
   });
 
-  const reports = buildReportsFromFindings(profile, findings, customQuery, liveGithubSources);
+  const reports = buildReportsFromFindings(profile, findings, customQuery);
 
   return {
     findings,
@@ -595,13 +670,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
 
-  const profile = normaliseProfile(payload.profile ?? {});
+  const rawProfile = normaliseProfile(payload.profile ?? {});
+  const profile: Profile = {
+    ...rawProfile,
+    fullName:
+      rawProfile.fullName ||
+      rawProfile.phones[0] ||
+      rawProfile.emails[0]?.split("@")[0] ||
+      "Data Subject",
+    city: rawProfile.city || rawProfile.country || "Global",
+  };
+
   const customQuery =
     typeof payload.customQuery === "string" ? payload.customQuery.trim().slice(0, 200) : "";
 
-  if (profile.fullName.length < 2 || profile.city.length < 2) {
+  const hasPinpointData =
+    profile.phones.length > 0 ||
+    profile.emails.length > 0 ||
+    rawProfile.fullName.length >= 2;
+
+  if (!hasPinpointData) {
     return NextResponse.json(
-      { error: "Full name and city are required to search with Gemini 3.8 Flash." },
+      { error: "Please provide at least one Phone Number, Email Address, or Full Name." },
       { status: 422 }
     );
   }
@@ -612,35 +702,46 @@ export async function POST(request: Request) {
 
   const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
-    const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
+    const fallbackResult = await runBuiltInPinpointRecon(profile, existingDomains, customQuery);
     return NextResponse.json(fallbackResult);
   }
 
   const ai = getGeminiClient(apiKey);
 
   try {
-    // Single, fast Gemini 3.8 Flash call that directly finds what the user is looking for
-    const singlePrompt = `You are Gemini 3.8 Flash powering Untrace, a personal data exposure & removal assistant.
-Find the 10 to 12 most relevant websites, people-search directories, caller-ID apps, B2B contact brokers, username/social scrapers, and public registries across the internet where this person's data is likely indexed or exposed, and provide each website's official privacy/DPO/opt-out email address so the user can immediately email them for removal:
+    const phonePermutationsList = profile.phones
+      .map((p) => `${p} (formats: ${buildPhonePermutations(p).join(", ")})`)
+      .join("; ");
 
-- Full Name: ${profile.fullName}
-- Location: ${[profile.city, profile.region, profile.country].filter(Boolean).join(", ")}
-- Emails: ${profile.emails.join(", ") || "None provided"}
-- Phone Numbers: ${profile.phones.join(", ") || "None provided"}
-- Usernames / Handles: ${profile.usernames.join(", ") || "None provided"}
-${customQuery ? `- User Search Intent / Extra Context: ${customQuery}` : ""}
+    const singlePrompt = `You are Gemini 3.8 Flash powering Untrace's Pinpoint Phone & Email Exposure Hunter.
+CRITICAL PROBLEM TO SOLVE: Common names produce false-positive duplicates. Therefore, DO NOT search merely by common name!
+Instead, pinpoint exposures across the internet specifically by **PHONE NUMBERS** and **EMAIL ADDRESSES**, and build two separate, high-precision removal lists:
+
+1. **PHONE NUMBER EXPOSURES ("matchType": "phone")**:
+   - Target Phone Number(s): ${phonePermutationsList || "Use user's region/profile phone directories"}
+   - Find 6 to 8 specific websites, reverse-phone lookup directories, caller-ID databases (e.g. Truecaller, Sync.me, NumLookup, Showcaller, SpyDialer, USPhoneBook, FastPeopleSearch, Justdial, IndiaMART), WhatsApp/mobile number scrapers, and direct-dial B2B brokers (e.g. Lusha, SignalHire) active in ${profile.country} and globally where this phone number is posted, indexed, or sold.
+   - Set "matchType" to "phone" and "matchedValue" to "${profile.phones[0] || "Phone Number"}".
+
+2. **EMAIL ADDRESS EXPOSURES ("matchType": "email")**:
+   - Target Email Address(es): ${profile.emails.join(", ") || "Use user's email/B2B contact brokers"}
+   - Find 6 to 8 specific websites, B2B email brokers (e.g. ContactOut, RocketReach, Apollo.io, Hunter.io, Snov.io, Skrapp.io, Clearbit, ZoomInfo), mailing list archives, breach/paste indexes, and people directories where this exact email address is posted, indexed, or sold.
+   - Set "matchType" to "email" and "matchedValue" to "${profile.emails[0] || "Email Address"}".
+
+Additional Context:
+- Country / Region: ${[profile.city, profile.region, profile.country].filter(Boolean).join(", ")}
+- Name on record (for removal notice only): ${profile.fullName}
+${customQuery ? `- Specific User Instructions: ${customQuery}` : ""}
 ${
   existingDomains.size > 0
-    ? `- Already listed domains (find NEW websites not in this list): ${Array.from(existingDomains)
+    ? `- Already listed domains (prioritize NEW websites not in this list): ${Array.from(
+        existingDomains
+      )
         .slice(0, 35)
         .join(", ")}`
     : ""
 }
 
-Requirements:
-1. Tailor the results to ${profile.country} and ${profile.city} (for example, include regional directories/caller-ID/corporate registries active in ${profile.country} alongside global B2B contact brokers and people-search sites).
-2. If the user provided a specific search intent ("${customQuery || "general personal data removal"}"), prioritize websites, directories, or brokers matching that intent.
-3. Every item MUST include a valid removal/privacy email address in "contactEmail" (e.g., privacy@domain.com, dpo@domain.com, grievanceofficer@domain.com, support@domain.com).`;
+Every single item MUST include a verified removal/DPO/privacy email address in "contactEmail" (e.g. privacy@domain.com, dpo@domain.com, support@domain.com, grievanceofficer@domain.com) so the user can send a deletion email immediately.`;
 
     const geminiPromise = generateWithFallback(ai, {
       contents: singlePrompt,
@@ -656,11 +757,19 @@ Requirements:
             properties: {
               broker: {
                 type: Type.STRING,
-                description: "Name of the website, directory, or data broker.",
+                description: "Name of the website, caller-ID app, reverse-phone site, or email broker.",
               },
               domain: {
                 type: Type.STRING,
-                description: "Clean domain name, e.g. truecaller.com or rocketreach.co",
+                description: "Clean domain name, e.g. truecaller.com, sync.me, contactout.com",
+              },
+              matchType: {
+                type: Type.STRING,
+                description: "Must be 'phone' for phone number sites or 'email' for email address sites.",
+              },
+              matchedValue: {
+                type: Type.STRING,
+                description: "The exact phone number or email address matched on this site.",
               },
               category: {
                 type: Type.STRING,
@@ -672,13 +781,13 @@ Requirements:
               },
               removalUrl: {
                 type: Type.STRING,
-                description: "Direct URL to the site's opt-out or privacy policy page.",
+                description: "Direct URL to the site's opt-out or unlisting page.",
               },
               exposedData: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
                 description:
-                  "Exposed fields from: fullName, city, homeAddress, formerAddresses, phone, email, age, relatives, associates, employer, jobTitle, propertyRecords, voterRecord, socialProfiles, usernames",
+                  "Exposed fields from: phone, email, fullName, city, homeAddress, formerAddresses, age, relatives, associates, employer, jobTitle, socialProfiles, usernames",
               },
               risk: {
                 type: Type.STRING,
@@ -690,16 +799,20 @@ Requirements:
               },
               summary: {
                 type: Type.STRING,
-                description: "1-2 sentence explanation of what data this website exposes.",
+                description:
+                  "1-2 sentence explanation of how this site posts or sells the user's phone number or email address.",
               },
               note: {
                 type: Type.STRING,
-                description: "Short tip on what to cite or include when emailing this site.",
+                description:
+                  "Short tip on removing this specific phone number or email address from this site.",
               },
             },
             required: [
               "broker",
               "domain",
+              "matchType",
+              "matchedValue",
               "category",
               "contactEmail",
               "removalUrl",
@@ -713,14 +826,13 @@ Requirements:
       },
     });
 
-    // Guard with an 8-second timeout so Vercel Hobby never times out
     const timeoutPromise = new Promise<null>((resolve) =>
       setTimeout(() => resolve(null), 8000)
     );
 
     const response = await Promise.race([geminiPromise, timeoutPromise]);
     if (!response) {
-      const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
+      const fallbackResult = await runBuiltInPinpointRecon(profile, existingDomains, customQuery);
       return NextResponse.json(fallbackResult);
     }
 
@@ -728,6 +840,8 @@ Requirements:
     let parsedFindings: Array<{
       broker: string;
       domain: string;
+      matchType?: string;
+      matchedValue?: string;
       category: string;
       contactEmail: string;
       removalUrl: string;
@@ -745,7 +859,7 @@ Requirements:
     }
 
     if (parsedFindings.length === 0) {
-      const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
+      const fallbackResult = await runBuiltInPinpointRecon(profile, existingDomains, customQuery);
       return NextResponse.json(fallbackResult);
     }
 
@@ -768,19 +882,34 @@ Requirements:
       seenDomains.add(cleanDomain);
 
       const slug = cleanDomain.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const id = `gemini_${slug || i}`;
+      const id = `pinpoint_${slug || i}`;
+
+      const matchType: ExposureMatchType =
+        item.matchType === "phone" || item.matchType === "email"
+          ? item.matchType
+          : item.exposedData?.includes("phone") && !item.exposedData?.includes("email")
+            ? "phone"
+            : "email";
+
+      const matchedValue =
+        item.matchedValue?.trim() ||
+        (matchType === "phone"
+          ? profile.phones[0] || "Phone Number"
+          : profile.emails[0] || "Email Address");
 
       const category: Category = VALID_CATEGORIES.has(item.category as Category)
         ? (item.category as Category)
-        : "people-search";
+        : matchType === "phone"
+          ? "people-search"
+          : "marketing";
 
       const validData = (item.exposedData ?? []).filter((d): d is DataType =>
         VALID_DATA_TYPES.has(d as DataType)
       );
-      const data: DataType[] = Array.from(new Set<DataType>(["fullName", ...validData]));
-      if (data.length < 2) {
-        data.push("city", "email");
-      }
+      const primaryDataField: DataType = matchType === "phone" ? "phone" : "email";
+      const data: DataType[] = Array.from(
+        new Set<DataType>([primaryDataField, "fullName", ...validData])
+      );
 
       const risk: Risk =
         item.risk === "high" || item.risk === "medium" || item.risk === "low"
@@ -802,9 +931,12 @@ Requirements:
           ? item.removalUrl
           : `https://${cleanDomain}/privacy`;
 
-      const inspectUrl = `https://www.google.com/search?q=${encodeURIComponent(
-        `site:${cleanDomain} "${profile.fullName}" ${profile.city}`
-      )}`;
+      const inspectUrl = buildPinpointInspectUrl(
+        cleanDomain,
+        matchType,
+        matchedValue,
+        profile
+      );
 
       findings.push({
         id,
@@ -823,7 +955,10 @@ Requirements:
         lastSeen: now,
         summary: item.summary,
         note: item.note,
-        discoveredByAgent: "Gemini 3.8 Flash",
+        discoveredByAgent:
+          matchType === "phone" ? "Phone Pinpoint AI" : "Email Pinpoint AI",
+        matchType,
+        matchedValue,
       });
     }
 
@@ -833,11 +968,11 @@ Requirements:
       findings,
       reports,
       breaches: buildBreachChecks(profile),
-      checked: Math.max(findings.length * 4, 32),
+      checked: Math.max(findings.length * 4, 36),
     });
   } catch (err: unknown) {
-    console.warn("Gemini 3.8 Flash falling back to built-in open-web recon:", err);
-    const fallbackResult = await runBuiltInOpenWebRecon(profile, existingDomains, customQuery);
+    console.warn("Gemini 3.8 Flash falling back to built-in pinpoint recon:", err);
+    const fallbackResult = await runBuiltInPinpointRecon(profile, existingDomains, customQuery);
     return NextResponse.json(fallbackResult);
   }
 }

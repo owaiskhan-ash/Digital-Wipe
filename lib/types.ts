@@ -127,6 +127,8 @@ export type Profile = {
   usernames: string[];
 };
 
+export type ExposureMatchType = "phone" | "email" | "name";
+
 export type Finding = {
   id: string;
   brokerId: string;
@@ -145,8 +147,12 @@ export type Finding = {
   lastSeen: string;
   summary: string;
   note?: string;
-  /** Name of the AI Swarm Agent that discovered this exposure on the live web */
+  /** Name of the AI engine or agent that discovered this exposure */
   discoveredByAgent?: string;
+  /** Pinpoint identifier type: phone number, email address, or name */
+  matchType?: ExposureMatchType;
+  /** Exact phone number or email address matched on this source */
+  matchedValue?: string;
 };
 
 export type SwarmAgentId =

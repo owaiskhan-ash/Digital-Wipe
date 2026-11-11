@@ -10,9 +10,10 @@ import {
   Globe,
   Loader2,
   Lock,
+  Mail,
   MailCheck,
+  Phone,
   ScanLine,
-  Search,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -21,20 +22,20 @@ import type { BreachExposure, Finding, ScanResult, SwarmAgentReport } from "@/li
 
 const STAGES = [
   {
-    label: "Step 01 · Understanding Search Intent",
-    detail: "Preparing your identity markers, region, and custom search instructions",
+    label: "Step 01 · Formatting Phone & Email Permutations",
+    detail: "Generating international, local, dashed & raw number formats for pinpoint search",
   },
   {
-    label: "Step 02 · Gemini 3.8 Flash Web Discovery",
-    detail: "Finding people-search sites, caller-ID apps, B2B brokers & public directories",
+    label: "Step 02 · Hunting Phone Number Exposures",
+    detail: "Scanning caller-ID apps, reverse-phone lookups, WhatsApp indexes & B2B direct-dial brokers",
   },
   {
-    label: "Step 03 · Resolving Privacy & DPO Emails",
-    detail: "Matching each website with its verified privacy@, dpo@, or grievance email",
+    label: "Step 03 · Hunting Email Address Exposures",
+    detail: "Checking B2B email databases, recruiter tools, mailing lists & breach indexes",
   },
   {
-    label: "Step 04 · Preparing 1-Click Removal Queue",
-    detail: "Drafting statutory deletion notices (GDPR, CCPA, DPDP) ready for Gmail",
+    label: "Step 04 · Building Separate Phone & Email Removal Lists",
+    detail: "Resolving verified privacy@ / dpo@ emails for 1-click Gmail removal",
   },
 ];
 
@@ -100,7 +101,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     setProgress(100);
     saveScan(scanResult);
     window.setTimeout(() => {
-      router.push("/dashboard");
+      router.push("/dashboard?tab=swarm");
     }, 220);
   };
 
@@ -110,16 +111,23 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       setError("Please confirm the details are your own (or an authorized client's) before scanning.");
       return;
     }
-    if (form.fullName.trim().length < 2) {
-      setError("Please add the full name to search for.");
+
+    const phonesList = form.phones
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const emailsList = form.emails
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (phonesList.length === 0 && emailsList.length === 0 && form.fullName.trim().length < 2) {
+      setError("Please enter at least one Phone Number or Email Address to pinpoint your data.");
       return;
     }
-    if (form.city.trim().length < 2) {
-      setError("Please add a city so Gemini can disambiguate common names.");
-      return;
-    }
-    if (form.emails && !/\S+@\S+\.\S+/.test(form.emails)) {
-      setError("That email address doesn't look complete.");
+
+    if (emailsList.some((e) => !/\S+@\S+\.\S+/.test(e))) {
+      setError("One of the email addresses doesn't look complete.");
       return;
     }
 
@@ -128,18 +136,16 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     setProgress(8);
 
     const cleanProfile = {
-      fullName: form.fullName.trim(),
-      city: form.city.trim(),
+      fullName:
+        form.fullName.trim() ||
+        emailsList[0]?.split("@")[0] ||
+        phonesList[0] ||
+        "Data Subject",
+      city: form.city.trim() || form.country,
       region: form.region.trim(),
       country: form.country,
-      emails: form.emails
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      phones: form.phones
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      emails: emailsList,
+      phones: phonesList,
       usernames: form.usernames
         .split(",")
         .map((s) => s.trim().replace(/^@/, ""))
@@ -190,7 +196,11 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       const response = await fetch("/api/scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          fullName: cleanProfile.fullName,
+          city: cleanProfile.city,
+        }),
       });
 
       if (!response.ok) {
@@ -209,6 +219,8 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   if (status === "running") {
     const stageIndex = Math.min(STAGES.length - 1, Math.floor(progress / 25));
     const currentStage = STAGES[stageIndex];
+    const targetDisplay =
+      form.phones.trim() || form.emails.trim() || form.fullName.trim();
 
     return (
       <div
@@ -221,10 +233,10 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
             <div>
               <p className="inline-flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-[0.2em] text-moss-deep">
                 <Sparkles className="size-3.5 animate-pulse text-moss" />
-                {useGemini ? "Gemini 3.8 Flash Active" : "Scanning"}
+                Gemini 3.8 Flash · Phone &amp; Email Pinpoint Search
               </p>
               <h2 className="mt-2 font-display text-[1.9rem] leading-tight">
-                Finding exposures for {form.fullName.trim()}.
+                Pinpointing {targetDisplay} across the web.
               </h2>
             </div>
             <span className="font-display text-3xl tabular-nums text-moss">
@@ -291,27 +303,45 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
             <p className="mt-1.5 text-xs text-muted">{currentStage.detail}</p>
 
             <div className="mt-7 rounded-xl border border-line bg-mist/60 p-4 space-y-2 text-xs">
-              <div className="flex items-center justify-between text-ink-soft">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <Globe className="size-3.5 text-moss" />
-                  Target Profile
-                </span>
-                <span className="truncate font-mono text-[0.7rem] text-ink">
-                  {form.fullName} · {form.city}, {form.country}
-                </span>
-              </div>
+              {form.phones.trim() && (
+                <div className="flex items-center justify-between text-ink-soft">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Phone className="size-3.5 text-moss" />
+                    Target Phone(s)
+                  </span>
+                  <span className="truncate font-mono text-[0.7rem] text-ink">
+                    {form.phones}
+                  </span>
+                </div>
+              )}
+              {form.emails.trim() && (
+                <div className="flex items-center justify-between text-ink-soft">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Mail className="size-3.5 text-moss" />
+                    Target Email(s)
+                  </span>
+                  <span className="truncate font-mono text-[0.7rem] text-ink">
+                    {form.emails}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-muted">
-                <span>AI Engine</span>
-                <span className="text-moss-deep font-medium">Gemini 3.8 Flash</span>
+                <span className="flex items-center gap-1.5">
+                  <Globe className="size-3.5 text-moss" />
+                  Region
+                </span>
+                <span className="text-moss-deep font-medium">
+                  {[form.city, form.country].filter(Boolean).join(", ")}
+                </span>
               </div>
             </div>
 
             <div className="mt-7 border-t border-line pt-5">
               <p className="flex items-start gap-2 text-xs leading-relaxed text-muted">
                 <Sparkles className="mt-0.5 size-3.5 shrink-0 text-moss" strokeWidth={1.7} aria-hidden />
-                Gemini 3.8 Flash is finding the directories, caller-ID databases, and B2B
-                contact brokers that match your search intent and resolving each site&apos;s
-                privacy officer email.
+                Instead of matching common names, Gemini 3.8 Flash pinpoints where your exact
+                phone numbers and email addresses are posted and separates them into two
+                dedicated removal lists.
               </p>
             </div>
           </div>
@@ -335,147 +365,145 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     >
       <div className="card p-6 md:p-8">
         <div className="space-y-5">
+          {/* Primary Pinpoint Section: Phone Numbers & Email Addresses */}
+          <div className="rounded-2xl border border-moss/30 bg-moss-soft/40 p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-moss-deep">
+                <Phone className="size-3.5 text-moss" />
+                Pinpoint Identifiers (Zero Common-Name Duplicates)
+              </span>
+            </div>
+
+            <div>
+              <label className="label flex items-center gap-1.5" htmlFor="phones">
+                <Phone className="size-3.5 text-moss" />
+                Phone numbers to hunt across the internet <span className="text-clay">*</span>
+              </label>
+              <input
+                id="phones"
+                className="field bg-surface font-mono text-sm"
+                value={form.phones}
+                onChange={(event) => update("phones")(event.target.value)}
+                placeholder="e.g. +91 98765 43210, +1 512 555 0134"
+                autoComplete="tel"
+                inputMode="tel"
+              />
+              <p className="mt-1.5 text-xs text-muted">
+                Separate multiple numbers with commas. AI automatically checks all formats
+                (with country code, local 10-digit, dashed, and unformatted) across caller-ID
+                apps, reverse-phone lookups, and B2B databases.
+              </p>
+            </div>
+
+            <div>
+              <label className="label flex items-center gap-1.5" htmlFor="emails">
+                <Mail className="size-3.5 text-moss" />
+                Email addresses to hunt across the internet <span className="text-clay">*</span>
+              </label>
+              <input
+                id="emails"
+                className="field bg-surface font-mono text-sm"
+                value={form.emails}
+                onChange={(event) => update("emails")(event.target.value)}
+                placeholder="you@example.com, work@company.com"
+                autoComplete="email"
+                inputMode="email"
+              />
+              <p className="mt-1.5 text-xs text-muted">
+                Separate multiple emails with commas. AI builds a separate list of B2B contact
+                brokers, lead lists, and directories exposing your email.
+              </p>
+            </div>
+          </div>
+
+          <div className="hairline my-6" />
+
+          {/* Supporting Identity Context for Legal Deletion Notices */}
           <div>
-            <label className="label" htmlFor="fullName">
-              Full name <span className="text-clay">*</span>
-            </label>
-            <input
-              id="fullName"
-              className="field"
-              value={form.fullName}
-              onChange={(event) => update("fullName")(event.target.value)}
-              placeholder="e.g. John Smith"
-              autoComplete="name"
-              required
-            />
-            <p className="mt-1.5 text-xs text-muted">
-              Your name or your client&apos;s full name as it appears on public records.
+            <p className="text-xs font-medium uppercase tracking-wider text-muted mb-3">
+              Supporting Details (Used for Country Law &amp; Signing Removal Letters)
             </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="fullName">
+                  Full name (for signing removal emails)
+                </label>
+                <input
+                  id="fullName"
+                  className="field"
+                  value={form.fullName}
+                  onChange={(event) => update("fullName")(event.target.value)}
+                  placeholder="e.g. Owais Khan"
+                  autoComplete="name"
+                />
+              </div>
+
+              <div>
+                <label className="label" htmlFor="country">
+                  Country
+                </label>
+                <div className="relative">
+                  <select
+                    id="country"
+                    className="field appearance-none pr-10"
+                    value={form.country}
+                    onChange={(event) => update("country")(event.target.value)}
+                  >
+                    {COUNTRIES.map((country) => (
+                      <option key={country} value={country}>
+                        {country}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
+                    strokeWidth={1.8}
+                    aria-hidden
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
               <label className="label" htmlFor="city">
-                City <span className="text-clay">*</span>
+                City (optional)
               </label>
               <input
                 id="city"
                 className="field"
                 value={form.city}
                 onChange={(event) => update("city")(event.target.value)}
-                placeholder="Austin"
+                placeholder="e.g. Mumbai, Austin, London"
                 autoComplete="address-level2"
-                required
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="region">
-                State / region
-              </label>
-              <input
-                id="region"
-                className="field"
-                value={form.region}
-                onChange={(event) => update("region")(event.target.value)}
-                placeholder="Texas"
-                autoComplete="address-level1"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="label" htmlFor="country">
-              Country
-            </label>
-            <div className="relative">
-              <select
-                id="country"
-                className="field appearance-none pr-10"
-                value={form.country}
-                onChange={(event) => update("country")(event.target.value)}
-              >
-                {COUNTRIES.map((country) => (
-                  <option key={country} value={country}>
-                    {country}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
-                strokeWidth={1.8}
-                aria-hidden
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-muted">
-              Guides regional discovery and sets the privacy law (GDPR, CCPA, DPDP) cited in
-              removal emails.
-            </p>
-          </div>
-
-          <div className="hairline my-7" />
-
-          <div>
-            <label className="label" htmlFor="emails">
-              Email addresses
-            </label>
-            <input
-              id="emails"
-              className="field"
-              value={form.emails}
-              onChange={(event) => update("emails")(event.target.value)}
-              placeholder="you@example.com, work@company.com"
-              autoComplete="email"
-              inputMode="email"
-            />
-            <p className="mt-1.5 text-xs text-muted">
-              Separate with commas. Helps locate exposed B2B and directory profiles.
-            </p>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="phones">
-                Phone numbers
-              </label>
-              <input
-                id="phones"
-                className="field"
-                value={form.phones}
-                onChange={(event) => update("phones")(event.target.value)}
-                placeholder="+1 512 555 0134"
-                autoComplete="tel"
-                inputMode="tel"
               />
             </div>
             <div>
               <label className="label" htmlFor="usernames">
-                Usernames / handles
+                Usernames / handles (optional)
               </label>
               <input
                 id="usernames"
                 className="field"
                 value={form.usernames}
                 onChange={(event) => update("usernames")(event.target.value)}
-                placeholder="johnsmith, jsmithdev"
+                placeholder="username1, username2"
               />
             </div>
           </div>
 
           <div>
             <label className="label" htmlFor="customQuery">
-              What are you looking to find or remove? (optional)
+              Extra instructions for Gemini 3.8 Flash (optional)
             </label>
             <input
               id="customQuery"
               className="field"
               value={form.customQuery}
               onChange={(event) => update("customQuery")(event.target.value)}
-              placeholder="e.g. phone directories, B2B work email brokers, company name, or specific websites"
+              placeholder="e.g. find sites showing my mobile number, WhatsApp directories, B2B recruiter brokers"
             />
-            <p className="mt-1.5 text-xs text-muted">
-              Tell Gemini 3.8 Flash exactly what kind of exposure or context you want it to
-              prioritize.
-            </p>
           </div>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-moss/30 bg-moss-soft/60 p-4">
@@ -488,12 +516,12 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
             <span className="text-xs leading-relaxed text-ink-soft">
               <strong className="inline-flex items-center gap-1.5 font-medium text-moss-deep">
                 <Sparkles className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
-                Powered by Gemini 3.8 Flash (Fast Open-Web Discovery)
+                Pinpoint Phone &amp; Email AI Search (Gemini 3.8 Flash)
               </strong>
               <span className="mt-1 block text-muted">
-                Uses a single fast Gemini 3.8 Flash pass to find the websites, people
-                directories, caller-ID databases, and B2B brokers exposing your data—and
-                resolves each company&apos;s privacy/DPO email for 1-click removal.
+                Searches specifically for your Phone Numbers and Email Addresses across the
+                internet and organizes them into two separate removal lists so common names
+                never cause duplicate results.
               </span>
             </span>
           </label>
@@ -506,8 +534,8 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               className="mt-0.5 size-4 shrink-0 accent-[var(--color-moss)]"
             />
             <span className="text-xs leading-relaxed text-ink-soft">
-              These are my own details (or I am authorized by my client) to request removal of
-              these records.
+              These are my own phone numbers / emails (or I am authorized by my client) to
+              request removal of these records.
             </span>
           </label>
 
@@ -524,11 +552,11 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
         <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-6">
           <button type="submit" className="btn btn-primary" disabled={!agreed}>
-            {useGemini ? "Find Exposures with Gemini 3.8 Flash" : "Run directory scan"}
+            Find Phone &amp; Email Exposures
             <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </button>
           <span className="text-xs text-muted sm:ml-auto">
-            {useGemini ? "Fast single-pass AI search (~3–5 seconds)" : "About 5 seconds"}
+            Builds separate Phone &amp; Email removal lists (~3–5s)
           </span>
         </div>
       </div>
@@ -536,24 +564,24 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       <aside className="space-y-5">
         <div className="card p-6 md:p-7">
           <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
-            How Gemini 3.8 Flash works
+            Why Pinpoint by Phone &amp; Email?
           </p>
           <ol className="mt-5 space-y-5">
             {[
               {
-                icon: Search,
-                title: "Finds What You Are Looking For",
-                body: "Searches across regional & global people directories, caller-ID apps, B2B contact brokers, and public records tailored to your country and search hints.",
+                icon: Phone,
+                title: "1. Separate Phone Number List",
+                body: "Finds caller-ID apps (Truecaller, Sync.me, Showcaller), reverse-phone books (USPhoneBook, NumLookup, SpyDialer, Justdial), and B2B mobile brokers (Lusha, SignalHire) exposing your exact number.",
               },
               {
-                icon: ShieldCheck,
-                title: "Resolves DPO & Privacy Emails",
-                body: "For every website found, Gemini provides the official privacy@, dpo@, or grievance officer email address.",
+                icon: Mail,
+                title: "2. Separate Email Address List",
+                body: "Finds B2B email brokers (ContactOut, RocketReach, Apollo, Hunter.io, Snov.io), prospect databases, and directories exposing your exact email address.",
               },
               {
                 icon: MailCheck,
-                title: "1-Click Gmail Removal Queue",
-                body: "Generates legal deletion emails (GDPR, CCPA, DPDP) for every discovered site so you can send them straight from your Gmail.",
+                title: "3. Exact-Match DPO Removal Emails",
+                body: "Drafts legal deletion notices specifying your exact Phone Number and Email Address so data brokers delete the right record without name confusion.",
               },
             ].map((item) => (
               <li key={item.title} className="flex gap-3">
