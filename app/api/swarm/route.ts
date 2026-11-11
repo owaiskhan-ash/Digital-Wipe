@@ -26,6 +26,18 @@ const SCAN_BUDGET_MS = 40_000;
 const GEMINI_TIMEOUT_MS = 34_000;
 /** Below this there is no point starting another Gemini attempt. */
 const MIN_GEMINI_BUDGET_MS = 8_000;
+
+/**
+ * Gemini 3 models think before answering, and a grounded search with thinking
+ * left on spends most of its time doing it: the same request answers in about
+ * eight seconds when the model replies straight away. The task here is a list
+ * of pages, not a reasoned argument, so thinking is switched off and the
+ * output is capped.
+ */
+const FAST_CONFIG = {
+  thinkingConfig: { thinkingBudget: 0 },
+  maxOutputTokens: 2048,
+} as const;
 /** Ceiling for a single search provider request. */
 const PROVIDER_TIMEOUT_MS = 8_000;
 
@@ -291,7 +303,12 @@ async function generateGroundedSearch(
   prompt: string,
   deadline?: number
 ): Promise<GenerateOutcome> {
-  return generateWithFallback(apiKey, prompt, { tools: [{ googleSearch: {} }] }, deadline);
+  return generateWithFallback(
+    apiKey,
+    prompt,
+    { tools: [{ googleSearch: {} }], ...FAST_CONFIG },
+    deadline
+  );
 }
 
 function buildPhonePermutations(rawPhone: string): string[] {
@@ -842,7 +859,12 @@ async function probeGemini(
   apiKey: string,
   deadline?: number
 ): Promise<{ model: string; endpoint: string }> {
-  const outcome = await generateWithFallback(apiKey, "ping", { maxOutputTokens: 1 }, deadline);
+  const outcome = await generateWithFallback(
+    apiKey,
+    "ping",
+    { ...FAST_CONFIG, maxOutputTokens: 1 },
+    deadline
+  );
   return { model: outcome.model, endpoint: outcome.endpoint };
 }
 
