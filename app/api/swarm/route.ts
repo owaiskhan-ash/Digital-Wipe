@@ -36,7 +36,7 @@ const MIN_GEMINI_BUDGET_MS = 8_000;
  */
 const FAST_CONFIG = {
   thinkingConfig: { thinkingBudget: 0 },
-  maxOutputTokens: 2048,
+  maxOutputTokens: 4096,
 } as const;
 /** Ceiling for a single search provider request. */
 const PROVIDER_TIMEOUT_MS = 8_000;
@@ -391,6 +391,42 @@ type GroundedMention = {
 };
 
 /**
+ * Reads a JSON array out of a model reply. Answers arrive fenced, plain, or cut
+ * off at the token limit, so a strict parse is not enough: when the whole array
+ * will not parse, every top-level object that does is kept.
+ */
+function parseJsonArrayLoose(text: string): unknown[] {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fenced ? fenced[1] : text).trim();
+  const bracketed = body.slice(body.indexOf("["), body.lastIndexOf("]") + 1);
+
+  for (const candidate of [body, bracketed]) {
+    if (!candidate.trim()) continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === "object") {
+        const shaped = parsed as { results?: unknown[]; findings?: unknown[] };
+        if (Array.isArray(shaped.results)) return shaped.results;
+        if (Array.isArray(shaped.findings)) return shaped.findings;
+      }
+    } catch {
+      // Truncated or wrapped: fall through to the object scan below.
+    }
+  }
+
+  const items: unknown[] = [];
+  for (const match of body.matchAll(/\{[^{}]*\}/g)) {
+    try {
+      items.push(JSON.parse(match[0]));
+    } catch {
+      // A partial object at the cut-off point: skip it alone.
+    }
+  }
+  return items;
+}
+
+/**
  * Extracts structured mentions from Gemini's text response and from Google
  * Search grounding chunks. Chunks are kept when the redirect resolves, and
  * identified by title only when the title carries a domain.
@@ -419,60 +455,68 @@ async function extractGroundedMentions(
 
   const text = respObj?.text ?? "";
 
-  // 1. Parse any JSON array inside the response text
-  try {
-    const jsonBlockMatch =
-      text.match(/```(?:json)?\s*([\s\S]*?)```/i) ||
-      text.match(/(\[\s*\{[\s\S]*\}\s*\])/);
-    const candidateJson = jsonBlockMatch ? jsonBlockMatch[1] : text;
-    const parsed = JSON.parse(candidateJson.trim());
-    const items: unknown[] = Array.isArray(parsed)
-      ? parsed
-      : typeof parsed === "object" && parsed !== null
-        ? ((parsed as { results?: unknown[]; findings?: unknown[] }).results ??
-          (parsed as { findings?: unknown[] }).findings ??
-          [])
-        : [];
+  // 1. Read the list the model wrote, even when the answer was cut short.
+  const items = parseJsonArrayLoose(text);
+  const staged: Array<{
+    title: string;
+    url: string;
+    snippet: string;
+    contactEmail?: string;
+  }> = [];
 
-    for (const item of items) {
-      if (!item || typeof item !== "object") continue;
-      const record = item as Record<string, unknown>;
-      let rawUrl = String(record.url || record.inspectUrl || record.removalUrl || "").trim();
-      // A model that answers "spokeo.com/profile/123" is still pointing at a
-      // real page; only a bare placeholder is worth discarding.
-      if (!rawUrl.startsWith("http") && /^[a-z0-9-]+(\.[a-z0-9-]+)+\//i.test(rawUrl)) {
-        rawUrl = `https://${rawUrl}`;
-      }
-      if (!rawUrl.startsWith("http")) continue;
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
 
-      const rawDomain = domainFromUrl(
-        String(record.domain || rawUrl).toLowerCase().includes("://")
-          ? String(record.domain || rawUrl)
-          : `https://${String(record.domain || rawUrl)}`
-      );
-      if (!isValidPublicDomain(rawDomain)) continue;
+    let rawUrl = String(record.url || record.inspectUrl || record.removalUrl || "").trim();
+    // A model that answers "spokeo.com/profile/123" is still pointing at a real
+    // page; only a bare placeholder is worth discarding.
+    if (!rawUrl.startsWith("http") && /^[a-z0-9-]+(\.[a-z0-9-]+)+\//i.test(rawUrl)) {
+      rawUrl = `https://${rawUrl}`;
+    }
+    if (!rawUrl.startsWith("http")) continue;
 
-      const title = String(record.title || record.broker || rawDomain).trim();
+    const title = String(record.title || record.broker || "").trim();
+    staged.push({
+      title,
+      url: rawUrl,
       // A page with a title and a URL is a finding even when the model left the
       // snippet out; dropping it would hide a real listing.
-      const snippet =
+      snippet:
         String(record.snippet || record.summary || "").trim() ||
-        `This page publishes "${targetValue}".`;
-
-      const dedupKey = `${rawUrl.toLowerCase()}::${title.toLowerCase()}`;
-      if (seenUrls.has(dedupKey)) continue;
-      seenUrls.add(dedupKey);
-
-      const contactEmail =
+        `This page publishes "${targetValue}".`,
+      contactEmail:
         typeof record.contactEmail === "string" && record.contactEmail.includes("@")
           ? record.contactEmail.trim()
-          : undefined;
-
-      mentions.push({ title, url: rawUrl, domain: rawDomain, snippet, contactEmail });
-    }
-  } catch {
-    // Continue to grounding chunk extraction
+          : undefined,
+    });
   }
+
+  // Gemini writes its sources as grounding redirects, not as the page URL.
+  // Follow them in parallel; a redirect that will not resolve is not a link
+  // anyone can read, so it is dropped rather than shown as a Google address.
+  const resolvedUrls = await Promise.all(
+    staged.map((entry) => resolveRedirectUrl(entry.url))
+  );
+
+  staged.forEach((entry, index) => {
+    const url = resolvedUrls[index];
+    const domain = domainFromUrl(url);
+    if (!isValidPublicDomain(domain)) return;
+
+    const title = entry.title || domain;
+    const dedupKey = `${url.toLowerCase()}::${title.toLowerCase()}`;
+    if (seenUrls.has(dedupKey)) return;
+    seenUrls.add(dedupKey);
+
+    mentions.push({
+      title,
+      url,
+      domain,
+      snippet: entry.snippet,
+      contactEmail: entry.contactEmail,
+    });
+  });
 
   // 2. Extract Google Search grounding chunks
   const metadata = respObj?.candidates?.[0]?.groundingMetadata;
