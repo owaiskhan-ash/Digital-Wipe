@@ -21,38 +21,30 @@ import { cn } from "@/lib/utils";
 const PHONE_STAGES = [
   {
     label: "Step 01 · Searching Google for Exact Phone Number",
-    detail: "Checking plain 10-digit, +91 / international, and spaced formats across the web",
+    detail: "Checking plain 10-digit, +91 / international, and spaced formats across Google Search",
   },
   {
     label: "Step 02 · Extracting All Web Pages & Blog Mentions",
     detail: "Capturing every agency page, blog post, case study, and directory listing your number",
   },
   {
-    label: "Step 03 · Scraping Contact Emails from Discovered Sites",
-    detail: "Extracting owner, webmaster, and privacy emails directly from each website",
-  },
-  {
-    label: "Step 04 · Preparing Phone Removal Queue",
-    detail: "Building your Phone Number Removal List for 1-click Gmail dispatch",
+    label: "Step 03 · Compiling Results into Dashboard",
+    detail: "Organizing all verified web pages (site contact emails can be resolved on-demand in your queue)",
   },
 ];
 
 const EMAIL_STAGES = [
   {
     label: "Step 01 · Searching Google for Exact Email Address",
-    detail: "Scanning web pages, blogs, contact footers, and B2B email indexes",
+    detail: "Scanning Google Search for every web page, blog, and directory mentioning this address",
   },
   {
     label: "Step 02 · Extracting All Web Pages Mentioning Your Email",
     detail: "Capturing every website and page where your email address is published",
   },
   {
-    label: "Step 03 · Resolving Site Owner & Privacy Emails",
-    detail: "Extracting contact and DPO email addresses from each discovered website",
-  },
-  {
-    label: "Step 04 · Preparing Email Removal Queue",
-    detail: "Building your Email Removal List for 1-click Gmail dispatch",
+    label: "Step 03 · Compiling Results into Dashboard",
+    detail: "Organizing all verified web pages (site contact emails can be resolved on-demand in your queue)",
   },
 ];
 
@@ -74,14 +66,13 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     if (status !== "running") return;
     const timer = window.setInterval(() => {
       setProgress((current) => {
-        if (current >= 98) return current;
-        if (current < 90) {
-          return Math.min(90, current + 2.8 + Math.random() * 2.2);
+        if (current >= 95) return current;
+        if (current < 85) {
+          return Math.min(85, current + 4.5 + Math.random() * 3.5);
         }
-        // Smooth crawl towards 98% while waiting for network response so UI never freezes
-        return Math.min(98, current + 0.4);
+        return Math.min(95, current + 0.8);
       });
-    }, 180);
+    }, 200);
     return () => window.clearInterval(timer);
   }, [status]);
 
@@ -107,13 +98,13 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
     setError("");
     setStatus("running");
-    setProgress(12);
+    setProgress(15);
 
     try {
       const response = await fetch("/api/swarm", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        signal: AbortSignal.timeout(18000),
+        signal: AbortSignal.timeout(50000),
         body: JSON.stringify({
           mode: scanMode,
           phone: scanMode === "phone" ? cleanPhone : undefined,
@@ -202,7 +193,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
   if (status === "running") {
     const stages = scanMode === "phone" ? PHONE_STAGES : EMAIL_STAGES;
-    const stageIndex = Math.min(stages.length - 1, Math.floor(progress / 25));
+    const stageIndex = Math.min(stages.length - 1, Math.floor(progress / 33.4));
     const currentStage = stages[stageIndex];
     const targetDisplay = scanMode === "phone" ? phone.trim() : email.trim();
 
@@ -255,7 +246,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
           <ol className="mt-8 space-y-4">
             {stages.map((stage, index) => {
-              const done = progress >= (index + 1) * 25;
+              const done = progress >= (index + 1) * 33.3;
               const active = index === stageIndex && !done;
               return (
                 <li key={stage.label} className="flex items-start gap-3">

@@ -801,19 +801,6 @@ CRITICAL INSTRUCTIONS:
     console.error("Live Google Search grounding failed:", err);
   }
 
-  // 2. Also run Live Website & Sitemap Scanner to find all pages on discovered/associated domains
-  const liveMentions = await scanLiveWebMentions(mode, targetValue);
-  for (const lm of liveMentions) {
-    const alreadyExists = allMentions.some(
-      (m) =>
-        m.url.toLowerCase() === lm.url.toLowerCase() ||
-        (m.domain === lm.domain && m.title.toLowerCase() === lm.title.toLowerCase())
-    );
-    if (!alreadyExists) {
-      allMentions.push(lm);
-    }
-  }
-
   if (searchError && allMentions.length === 0) {
     return NextResponse.json(
       {
@@ -822,21 +809,6 @@ CRITICAL INSTRUCTIONS:
       { status: 502 }
     );
   }
-
-  // 3. Scrape live contact emails from each discovered website in parallel
-  const uniqueDomains = Array.from(
-    new Set(allMentions.map((m) => m.domain).filter(isValidPublicDomain))
-  ).slice(0, 8);
-
-  const domainEmailsMap = new Map<string, string[]>();
-  await Promise.all(
-    uniqueDomains.map(async (domain) => {
-      const emails = await scrapeEmailsFromWebsite(domain);
-      if (emails.length > 0) {
-        domainEmailsMap.set(domain, emails);
-      }
-    })
-  );
 
   const now = new Date().toISOString();
   const matchType: ExposureMatchType = mode;
@@ -850,10 +822,6 @@ CRITICAL INSTRUCTIONS:
       item.snippet.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? []
     ).filter((e) => e.toLowerCase() !== lowerTargetEmail);
 
-    const scrapedForDomain = (domainEmailsMap.get(item.domain) ?? []).filter(
-      (e) => e.toLowerCase() !== lowerTargetEmail
-    );
-
     const itemContactCandidate =
       item.contactEmail && item.contactEmail.toLowerCase() !== lowerTargetEmail
         ? item.contactEmail
@@ -861,7 +829,6 @@ CRITICAL INSTRUCTIONS:
 
     const resolvedEmail =
       itemContactCandidate ||
-      scrapedForDomain[0] ||
       snippetEmails[0] ||
       undefined;
 
@@ -892,12 +859,9 @@ CRITICAL INSTRUCTIONS:
       firstSeen: now,
       lastSeen: now,
       summary: item.snippet,
-      note:
-        scrapedForDomain.length > 1
-          ? `Contact emails on ${item.domain}: ${scrapedForDomain.slice(0, 3).join(", ")}`
-          : resolvedEmail
-            ? `Webpage showing ${targetValue}. Send removal request to ${resolvedEmail}.`
-            : `Webpage showing ${targetValue}. Open the page to find the site owner's contact form or address.`,
+      note: resolvedEmail
+        ? `Webpage showing ${targetValue}. Contact email: ${resolvedEmail}.`
+        : `Webpage showing ${targetValue}. Contact email can be resolved on-demand in dashboard.`,
       discoveredByAgent:
         mode === "phone" ? "Phone Number Web Scan" : "Email Address Web Scan",
       matchType,

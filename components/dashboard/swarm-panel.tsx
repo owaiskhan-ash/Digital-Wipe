@@ -47,9 +47,33 @@ export function SwarmPanel({
 }) {
   const [activeMode, setActiveMode] = useState<"phone" | "email">(initialMode);
   const [running, setRunning] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [phoneInput, setPhoneInput] = useState(profile.phones[0] || "");
   const [emailInput, setEmailInput] = useState(profile.emails[0] || "");
+
+  const resolveContactEmail = async (finding: Finding) => {
+    setResolvingId(finding.id);
+    try {
+      const res = await fetch("/api/resolve-contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain: finding.domain, url: finding.inspectUrl }),
+      });
+      const data = await res.json();
+      if (data.contactEmail) {
+        finding.contactEmail = data.contactEmail;
+        finding.note = `Contact email: ${data.contactEmail}`;
+        onToast(`Resolved contact email for ${finding.domain}: ${data.contactEmail}`);
+      } else {
+        onToast(`No public contact email found on ${finding.domain}. You can check their contact page.`);
+      }
+    } catch {
+      onToast(`Could not reach ${finding.domain} to check contact email.`);
+    } finally {
+      setResolvingId(null);
+    }
+  };
 
   useEffect(() => {
     setActiveMode(initialMode);
@@ -272,7 +296,7 @@ export function SwarmPanel({
               {running ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Scanning Google &amp; Scraping Emails...
+                  Searching Google for Web Mentions...
                 </>
               ) : (
                 <>
@@ -394,10 +418,27 @@ export function SwarmPanel({
                             </span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 text-muted">
-                            <Mail className="size-3.5 text-muted" />
-                            No public email scraped on page — add recipient in composer or use site contact page
-                          </span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 text-muted">
+                              <Mail className="size-3.5 text-muted" />
+                              Contact email not resolved yet
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => resolveContactEmail(finding)}
+                              disabled={resolvingId === finding.id}
+                              className="btn btn-secondary btn-xs py-0.5 px-2 text-[0.7rem] inline-flex items-center gap-1"
+                            >
+                              {resolvingId === finding.id ? (
+                                <>
+                                  <Loader2 className="size-3 animate-spin" />
+                                  Checking...
+                                </>
+                              ) : (
+                                "Find Contact Email"
+                              )}
+                            </button>
+                          </div>
                         )}
                         {finding.note && (
                           <span className="text-[0.7rem] text-muted">
