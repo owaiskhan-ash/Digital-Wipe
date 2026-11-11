@@ -826,6 +826,46 @@ async function probeGemini(apiKey: string): Promise<{ model: string; endpoint: s
   return { model: outcome.model, endpoint: outcome.endpoint };
 }
 
+function buildGroundedPrompt(mode: "phone" | "email", targetValue: string): string {
+  const perms = mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
+  const searchTermsFormatted = perms.map((term) => `"${term}"`).join(" OR ");
+  const digits = targetValue.replace(/\D/g, "");
+  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+  const emailParts =
+    mode === "email" && targetValue.includes("@") ? targetValue.split("@") : [];
+
+  if (mode === "phone") {
+    return `Use Google Search to search for the exact phone number: ${searchTermsFormatted}
+Also search Google for "${last10}".
+
+CRITICAL INSTRUCTIONS:
+1. Look at EVERY actual website, agency page, blog post, case study, portfolio, or directory returned by Google Search where the number "${targetValue}" (or "${last10}") is mentioned on the page.
+2. Include ALL real webpages from the Google Search results (including multiple pages or blog posts from the same website if they appear in Google Search).
+3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish this phone number, return an empty JSON array: [].
+4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
+   - "title": Exact page title from Google Search
+   - "url": Full https:// URL of the page from Google Search
+   - "domain": Real website domain from the URL
+   - "snippet": The exact snippet or context showing the phone number on that page
+   - "contactEmail": Any owner, privacy, or contact email address visible on that site`;
+  }
+
+  return `Use Google Search to search for the exact email address: "${targetValue}" and ${targetValue}${
+    emailParts.length === 2 ? ` and "${emailParts[0]}" "${emailParts[1]}"` : ""
+  }.
+
+CRITICAL INSTRUCTIONS:
+1. Look at EVERY actual website, company page, agency site, blog post, case study, contact page, or directory returned by Google Search that shows or mentions the email address "${targetValue}".
+2. Include ALL real webpages from the Google Search results (including multiple pages, case studies, or blog posts from the same website if they show this email address).
+3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish "${targetValue}", return an empty JSON array: [].
+4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
+   - "title": Exact page title from Google Search
+   - "url": Full https:// URL of the page from Google Search
+   - "domain": Real website domain from the URL
+   - "snippet": The exact snippet or context showing how "${targetValue}" appears on that page
+   - "contactEmail": A distinct owner, webmaster, or privacy contact email address for that website (do NOT set contactEmail to "${targetValue}")`;
+}
+
 export async function GET(request: Request) {
   const apiKey = resolveGeminiApiKey();
   const providers = providerStatus();
@@ -887,6 +927,11 @@ export async function GET(request: Request) {
   }
 
   const startedAt = Date.now();
+  const params = new URL(request.url).searchParams;
+  const sample = params.get("sample")?.trim() || "";
+  const sampleMode: "phone" | "email" =
+    params.get("mode") === "email" ? "email" : "phone";
+
   try {
     const probe = await probeGemini(apiKey);
 
@@ -918,6 +963,40 @@ export async function GET(request: Request) {
       };
     }
 
+    let dryrun: Record<string, unknown> | null = null;
+    if (sample) {
+      try {
+        const grounded = await generateGroundedSearch(
+          apiKey,
+          buildGroundedPrompt(sampleMode, sample)
+        );
+        const shaped = grounded.response as {
+          text?: string;
+          candidates?: Array<{ groundingMetadata?: { groundingChunks?: unknown[] } }>;
+        };
+        const text = shaped?.text ?? "";
+        const mentions = await extractGroundedMentions(grounded.response, sample);
+        dryrun = {
+          ok: true,
+          model: grounded.model,
+          endpoint: grounded.endpoint,
+          citations:
+            shaped?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0,
+          textChars: text.length,
+          textPreview: text.slice(0, 300),
+          parsedMentions: mentions.length,
+          domains: mentions.slice(0, 5).map((mention) => mention.domain),
+        };
+      } catch (err) {
+        console.error("Dry run failed:", err);
+        dryrun = {
+          ok: false,
+          error: describeSearchError(err),
+          raw: errorText(err).slice(0, 500),
+        };
+      }
+    }
+
     return NextResponse.json(
       {
         ...base,
@@ -928,6 +1007,7 @@ export async function GET(request: Request) {
           endpoint: probe.endpoint,
           latencyMs: Date.now() - startedAt,
           grounding,
+          ...(dryrun ? { dryrun } : {}),
         },
       },
       { headers: { "Cache-Control": "no-store" } }
@@ -1012,45 +1092,7 @@ export async function POST(request: Request) {
     errors.push("GEMINI_API_KEY is not set, so the grounded search did not run.");
   } else {
     try {
-      const perms =
-        mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
-      const searchTermsFormatted = perms.map((term) => `"${term}"`).join(" OR ");
-      const digits = targetValue.replace(/\D/g, "");
-      const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-      const emailParts =
-        mode === "email" && targetValue.includes("@") ? targetValue.split("@") : [];
-
-      const groundedPrompt =
-        mode === "phone"
-          ? `Use Google Search to search for the exact phone number: ${searchTermsFormatted}
-Also search Google for "${last10}".
-
-CRITICAL INSTRUCTIONS:
-1. Look at EVERY actual website, agency page, blog post, case study, portfolio, or directory returned by Google Search where the number "${targetValue}" (or "${last10}") is mentioned on the page.
-2. Include ALL real webpages from the Google Search results (including multiple pages or blog posts from the same website if they appear in Google Search).
-3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish this phone number, return an empty JSON array: [].
-4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
-   - "title": Exact page title from Google Search
-   - "url": Full https:// URL of the page from Google Search
-   - "domain": Real website domain from the URL
-   - "snippet": The exact snippet or context showing the phone number on that page
-   - "contactEmail": Any owner, privacy, or contact email address visible on that site`
-          : `Use Google Search to search for the exact email address: "${targetValue}" and ${targetValue}${
-              emailParts.length === 2
-                ? ` and "${emailParts[0]}" "${emailParts[1]}"`
-                : ""
-            }.
-
-CRITICAL INSTRUCTIONS:
-1. Look at EVERY actual website, company page, agency site, blog post, case study, contact page, or directory returned by Google Search that shows or mentions the email address "${targetValue}".
-2. Include ALL real webpages from the Google Search results (including multiple pages, case studies, or blog posts from the same website if they show this email address).
-3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish "${targetValue}", return an empty JSON array: [].
-4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
-   - "title": Exact page title from Google Search
-   - "url": Full https:// URL of the page from Google Search
-   - "domain": Real website domain from the URL
-   - "snippet": The exact snippet or context showing how "${targetValue}" appears on that page
-   - "contactEmail": A distinct owner, webmaster, or privacy contact email address for that website (do NOT set contactEmail to "${targetValue}")`;
+      const groundedPrompt = buildGroundedPrompt(mode, targetValue);
 
       const grounded = await generateGroundedSearch(apiKey, groundedPrompt);
       const mentions = await extractGroundedMentions(grounded.response, targetValue);
