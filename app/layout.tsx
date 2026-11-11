@@ -3,6 +3,7 @@ import "@fontsource-variable/inter";
 import "@fontsource/instrument-serif/400.css";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
+import { MobileShell } from "@/components/mobile-shell";
 import {
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -79,6 +80,8 @@ export const viewport: Viewport = {
   themeColor: "#fafaf7",
   width: "device-width",
   initialScale: 1,
+  // Lets the dock sit above the home indicator instead of under it.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -87,7 +90,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-dvh bg-paper text-ink antialiased">
-        <StoreProvider>{children}</StoreProvider>
+        <StoreProvider>
+          {/* Clears the fixed dock on phones; unchanged on desktop. */}
+          <div className="pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
+            {children}
+          </div>
+          <MobileShell />
+        </StoreProvider>
       </body>
     </html>
   );
