@@ -18,10 +18,10 @@ import firebaseConfig from "@/firebase-applet-config.json";
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
-const firestoreDatabaseId = (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId;
-export const db: Firestore = firestoreDatabaseId
-  ? getFirestore(app, firestoreDatabaseId)
-  : getFirestore(app);
+const firestoreDatabaseId =
+  (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId ||
+  "ai-studio-digitalwipe-70381357-2135-48e4-8de0-95bd491f83bd";
+export const db: Firestore = getFirestore(app, firestoreDatabaseId);
 export const auth = getAuth(app);
 
 // In-memory access token cache for Google Workspace APIs (never stored in localStorage)

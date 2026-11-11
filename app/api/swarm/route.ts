@@ -18,14 +18,47 @@ import type {
 export const runtime = "nodejs";
 
 function getGeminiClient() {
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+    undefined;
+
   return new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
+    apiKey,
     httpOptions: {
       headers: {
         "User-Agent": "aistudio-build",
       },
     },
   });
+}
+
+async function generateWithFallback(
+  ai: GoogleGenAI,
+  params: {
+    contents: string;
+    config?: Record<string, unknown>;
+  }
+) {
+  try {
+    return await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: params.contents,
+      config: params.config,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // If hosted externally (e.g. Vercel) where internal alias gemini-3.8-flash is not found, fall back to gemini-flash-latest
+    if (msg.includes("404") || msg.includes("not found") || msg.includes("NOT_FOUND")) {
+      return await ai.models.generateContent({
+        model: "gemini-flash-latest",
+        contents: params.contents,
+        config: params.config,
+      });
+    }
+    throw err;
+  }
 }
 
 const VALID_CATEGORIES = new Set<Category>([
@@ -207,16 +240,6 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json(
-      {
-        error:
-          "GEMINI_API_KEY is not configured on the server. Add GEMINI_API_KEY to your deployment environment variables to enable the live AI Agent Swarm.",
-      },
-      { status: 500 }
-    );
-  }
-
   const ai = getGeminiClient();
   const existingDomains = new Set(
     (payload.existingDomains ?? []).map((d) => d.toLowerCase().replace(/^www\./, ""))
@@ -227,8 +250,7 @@ export async function POST(request: Request) {
     const agentRuns = await Promise.all(
       SWARM_AGENTS.map(async (agent): Promise<{ report: SwarmAgentReport; rawText: string }> => {
         try {
-          const response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
+          const response = await generateWithFallback(ai, {
             contents: agent.prompt(profile, customQuery),
             config: {
               tools: [{ googleSearch: {} }],
@@ -320,8 +342,7 @@ CRITICAL REQUIREMENTS:
 2. Every finding MUST include a valid privacy/DPO/grievance email address in "contactEmail" (e.g. privacy@domain.com, dpo@domain.com, optout@domain.com, grievanceofficer@domain.com) so the client can email them right away.
 3. Attribute each finding to the agentId that discovered it ("directories", "b2b-brokers", "social-archives", or "dpo-resolver").`;
 
-    const synthesisResponse = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
+    const synthesisResponse = await generateWithFallback(ai, {
       contents: synthesisPrompt,
       config: {
         thinkingConfig: {
