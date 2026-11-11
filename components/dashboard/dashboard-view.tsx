@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Bot,
   Check,
   Download,
-  FileSearch,
+  Mail,
+  Phone,
   RefreshCw,
   ShieldCheck,
   Trash2,
@@ -20,28 +20,31 @@ import {
   type SwarmAgentReport,
 } from "@/lib/types";
 import { cn, downloadFile, formatDate, plural, toCsv } from "@/lib/utils";
-import { EmptyState, SectionLabel, StatCard } from "@/components/ui";
+import { SectionLabel, StatCard } from "@/components/ui";
 import { Composer, type ComposerSeed } from "./composer";
-import { FindingsPanel } from "./findings-panel";
 import { RequestsPanel } from "./requests-panel";
-import { BreachesPanel } from "./breaches-panel";
 import { SwarmPanel } from "./swarm-panel";
 
-type Tab = "findings" | "swarm" | "breaches" | "requests";
+type Tab = "swarm" | "requests";
 
 export function DashboardView() {
   const { hydrated, scan, requests, saveScan, reset, user, signIn } = useStore();
   const [tab, setTab] = useState<Tab>("swarm");
+  const [scanMode, setScanMode] = useState<"phone" | "email">("phone");
   const [seeds, setSeeds] = useState<ComposerSeed[] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Tab selection via URL
   useEffect(() => {
     if (!hydrated) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "requests") setTab("requests");
-    if (params.get("tab") === "swarm") setTab("swarm");
-    if (params.get("tab") === "findings") setTab("findings");
+    if (params.get("mode") === "email") {
+      setScanMode("email");
+      setTab("swarm");
+    } else if (params.get("mode") === "phone") {
+      setScanMode("phone");
+      setTab("swarm");
+    }
   }, [hydrated]);
 
   useEffect(() => {
@@ -52,11 +55,18 @@ export function DashboardView() {
 
   const stats = useMemo(() => {
     const findings = scan?.findings ?? [];
+    const phoneCount = findings.filter(
+      (f) => f.matchType === "phone" || (!f.matchType && f.data.includes("phone") && !f.data.includes("email"))
+    ).length;
+    const emailCount = findings.filter(
+      (f) => f.matchType === "email" || (!f.matchType && f.matchType !== "phone" && !f.data.includes("phone"))
+    ).length;
     const sent = requests.filter((request) => request.status !== "drafted").length;
     const removed = requests.filter((request) => request.status === "removed").length;
     return {
       total: findings.length,
-      high: findings.filter((finding) => finding.risk === "high").length,
+      phoneCount,
+      emailCount,
       sent,
       removed,
       drafted: requests.filter((request) => request.status === "drafted").length,
@@ -75,30 +85,24 @@ export function DashboardView() {
     if (!scan) return;
     const rows: Array<Array<string | number>> = [
       [
-        "Broker",
+        "Scan Type",
+        "Matched Value",
+        "Page / Website Title",
         "Domain",
-        "Category",
-        "Risk",
-        "Data exposed",
-        "Effort",
-        "First seen",
-        "Last seen",
-        "Request status",
-        "Opt-out page",
+        "URL",
+        "Contact Email",
+        "Request Status",
       ],
       ...scan.findings.map((finding) => {
         const request = requests.find((item) => item.findingId === finding.id);
         return [
+          finding.matchType ?? "phone",
+          finding.matchedValue ?? "",
           finding.broker,
           finding.domain,
-          CATEGORIES[finding.category].label,
-          finding.risk,
-          finding.data.map((type) => DATA_LABELS[type]).join("; "),
-          finding.effort,
-          formatDate(finding.firstSeen),
-          formatDate(finding.lastSeen),
+          finding.inspectUrl,
+          finding.contactEmail ?? `contact@${finding.domain}`,
           request?.status ?? "not requested",
-          finding.removalUrl,
         ];
       }),
     ];
@@ -128,17 +132,18 @@ export function DashboardView() {
     return (
       <div className="container-page py-16 md:py-24">
         <div className="mx-auto max-w-xl text-center">
-          <SectionLabel>Your report</SectionLabel>
+          <SectionLabel>Phone &amp; Email Scanner</SectionLabel>
           <h1 className="mt-4 text-[2.4rem] leading-tight sm:text-[2.9rem]">
             Nothing scanned yet.
           </h1>
           <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-muted">
-            Start with your name and city. In a few seconds you&apos;ll see which
-            directories hold your details, and who to write to about it.
+            Run a <strong>Phone Number Scan</strong> or an <strong>Email Scan</strong> to
+            find every webpage where your number or email is mentioned and build your
+            removal list.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link href="/scan" className="btn btn-primary">
-              Start a scan
+              Start Phone or Email Scan
               <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
             </Link>
             {!user ? (
@@ -152,76 +157,45 @@ export function DashboardView() {
             ) : null}
           </div>
         </div>
-
-        <div className="mx-auto mt-16 max-w-2xl">
-          <div className="card grid gap-5 p-6 sm:grid-cols-3">
-            {[
-              { title: "Listings", body: "Every directory that publishes you, ranked by sensitivity." },
-              { title: "Requests", body: "A deletion email per owner, citing the right law." },
-              { title: "Follow-ups", body: "A tracked clock so nothing gets ignored." },
-            ].map((item) => (
-              <div key={item.title}>
-                <p className="text-sm font-medium text-ink">{item.title}</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted">{item.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     );
   }
 
-  const swarmFindingsCount = scan.findings.filter((f) =>
-    Boolean(f.discoveredByAgent)
-  ).length;
-
   const mergeSwarmResults = (
     newFindings: Finding[],
-    reports: SwarmAgentReport[]
+    reports: SwarmAgentReport[],
+    mode: "phone" | "email",
+    scannedValue: string
   ) => {
-    const existingByDomain = new Map(
-      scan.findings.map((f) => [f.domain.toLowerCase(), f])
+    const otherModeFindings = scan.findings.filter(
+      (f) => f.matchType && f.matchType !== mode
     );
 
-    const mergedFindings = [...scan.findings];
-    let addedCount = 0;
-
-    for (const incomingFinding of newFindings) {
-      const key = incomingFinding.domain.toLowerCase();
-      const existing = existingByDomain.get(key);
-      if (existing) {
-        const idx = mergedFindings.findIndex((f) => f.id === existing.id);
-        if (idx !== -1) {
-          mergedFindings[idx] = {
-            ...existing,
-            contactEmail: incomingFinding.contactEmail || existing.contactEmail,
-            discoveredByAgent:
-              incomingFinding.discoveredByAgent || existing.discoveredByAgent,
-            matchType: incomingFinding.matchType || existing.matchType,
-            matchedValue: incomingFinding.matchedValue || existing.matchedValue,
-            note: incomingFinding.note || existing.note,
-          };
-        }
-      } else {
-        existingByDomain.set(key, incomingFinding);
-        mergedFindings.unshift(incomingFinding);
-        addedCount += 1;
-      }
-    }
+    const updatedFindings = [...newFindings, ...otherModeFindings];
+    const updatedProfile = {
+      ...scan.profile,
+      phones:
+        mode === "phone" && scannedValue
+          ? Array.from(new Set([scannedValue, ...scan.profile.phones]))
+          : scan.profile.phones,
+      emails:
+        mode === "email" && scannedValue
+          ? Array.from(new Set([scannedValue, ...scan.profile.emails]))
+          : scan.profile.emails,
+    };
 
     saveScan({
       ...scan,
-      checked: scan.checked + addedCount,
-      findings: mergedFindings,
+      profile: updatedProfile,
+      checked: scan.checked + newFindings.length * 3,
+      findings: updatedFindings,
       swarmReports: reports,
     });
   };
 
   const tabs: Array<{ id: Tab; label: string; count: number }> = [
-    { id: "swarm", label: "Phone & Email Lists", count: swarmFindingsCount },
-    { id: "findings", label: "All Findings", count: scan.findings.length },
-    { id: "breaches", label: "Breaches", count: scan.breaches.length },
-    { id: "requests", label: "Requests", count: requests.length },
+    { id: "swarm", label: "Phone & Email Scans", count: scan.findings.length },
+    { id: "requests", label: "Removal Requests", count: requests.length },
   ];
 
   return (
@@ -232,44 +206,40 @@ export function DashboardView() {
           <div>
             <SectionLabel>Exposure report</SectionLabel>
             <h1 className="mt-3 text-[2.2rem] leading-tight sm:text-[2.7rem]">
-              Hello, {scan.profile.fullName.split(" ")[0] || "there"}.
+              Phone &amp; Email Exposure Dashboard
             </h1>
-            <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs text-muted">
-              <span>{scan.profile.fullName}</span>
-              <span aria-hidden>·</span>
-              <span>
-                {[scan.profile.city, scan.profile.region].filter(Boolean).join(", ")}
-              </span>
-              <span aria-hidden>·</span>
-              <span>{plural(scan.checked, "source")} checked</span>
-              <span aria-hidden>·</span>
-              <span>{formatDate(scan.createdAt)}</span>
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted">
+              {scan.profile.phones.length > 0 && (
+                <span className="inline-flex items-center gap-1 font-mono text-ink">
+                  <Phone className="size-3.5 text-moss" />
+                  {scan.profile.phones.join(", ")}
+                </span>
+              )}
+              {scan.profile.emails.length > 0 && (
+                <span className="inline-flex items-center gap-1 font-mono text-ink">
+                  <Mail className="size-3.5 text-moss" />
+                  {scan.profile.emails.join(", ")}
+                </span>
+              )}
+              <span>· {formatDate(scan.createdAt)}</span>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setTab("swarm")}
-              className="btn btn-primary btn-sm"
-            >
-              <Bot className="size-3.5" strokeWidth={1.8} aria-hidden />
-              Phone &amp; Email Lists
-            </button>
             <Link href="/scan" className="btn btn-secondary btn-sm">
               <RefreshCw className="size-3.5" strokeWidth={1.8} aria-hidden />
-              New scan
+              New Scan
             </Link>
             <button type="button" onClick={exportReport} className="btn btn-secondary btn-sm">
               <Download className="size-3.5" strokeWidth={1.8} aria-hidden />
-              Export
+              Export CSV
             </button>
             <button
               type="button"
               onClick={() => {
                 if (window.confirm("Delete this report and all requests from this browser?")) {
                   reset();
-                  setTab("findings");
+                  setTab("swarm");
                 }
               }}
               className="btn btn-quiet btn-sm text-muted"
@@ -288,9 +258,9 @@ export function DashboardView() {
                 <ShieldCheck className="size-4 text-moss" />
               </div>
               <div>
-                <p className="text-xs font-medium text-ink">Save your report &amp; track opt-outs</p>
+                <p className="text-xs font-medium text-ink">Save your Phone &amp; Email scan lists</p>
                 <p className="text-[0.75rem] text-muted">
-                  Sign in with Google in 1 click to back up your findings and follow up with data brokers across devices.
+                  Sign in with Google in 1 click to back up your findings and removal emails across devices.
                 </p>
               </div>
             </div>
@@ -299,12 +269,6 @@ export function DashboardView() {
               onClick={() => signIn()}
               className="btn btn-primary btn-sm flex items-center gap-2 text-xs"
             >
-              <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
               1-click Google Sign In
             </button>
           </div>
@@ -313,7 +277,7 @@ export function DashboardView() {
             <span className="flex items-center gap-2">
               <ShieldCheck className="size-4 text-moss" />
               <span>
-                Synced to your account (<strong>{user.email}</strong>) in Firebase Firestore
+                Synced to your account (<strong>{user.email}</strong>)
               </span>
             </span>
             <span className="text-[0.6875rem] font-medium text-moss">Cloud backup active</span>
@@ -323,55 +287,27 @@ export function DashboardView() {
         {/* Stats */}
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
-            label="Listings found"
-            value={stats.total}
-            hint={`across ${scan.checked} sources`}
+            label="Phone Number Mentions"
+            value={stats.phoneCount}
+            hint="Webpages mentioning your number"
           />
           <StatCard
-            label="High risk"
-            value={stats.high}
-            accent="clay"
-            hint="Address, phone and relatives"
+            label="Email Address Mentions"
+            value={stats.emailCount}
+            hint="Webpages mentioning your email"
           />
           <StatCard
-            label="Requests sent"
+            label="Removal Emails Sent"
             value={stats.sent}
-            hint={stats.drafted ? `${plural(stats.drafted, "draft")} waiting` : "None waiting"}
+            hint={stats.drafted ? `${plural(stats.drafted, "draft")} waiting` : "Ready to send"}
           />
           <StatCard
-            label="Confirmed removed"
+            label="Confirmed Removed"
             value={stats.removed}
             accent="moss"
             hint={requests.length ? `of ${plural(requests.length, "request")}` : "Nothing yet"}
           />
         </div>
-
-        {requests.length === 0 && scan.findings.length > 0 ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-            <ShieldCheck className="size-4 shrink-0 text-moss" strokeWidth={1.8} aria-hidden />
-            <p className="text-xs leading-relaxed text-ink-soft">
-              Start with the high-risk people-search listings, or deploy the AI Agent Swarm
-              to search the live web for additional brokers and privacy contacts.
-            </p>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-secondary btn-xs"
-                onClick={() => setTab("swarm")}
-              >
-                <Bot className="size-3.5 text-moss" />
-                Deploy AI Swarm
-              </button>
-              <button
-                type="button"
-                className="btn btn-quiet btn-xs"
-                onClick={() => setTab("findings")}
-              >
-                Show findings
-              </button>
-            </div>
-          </div>
-        ) : null}
 
         {/* Tabs */}
         <div className="mt-8 flex items-center gap-1 overflow-x-auto border-b border-line pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -402,40 +338,18 @@ export function DashboardView() {
         </div>
 
         <div className="mt-6 animate-fade-in">
-          {tab === "findings" ? (
-            scan.findings.length > 0 ? (
-              <FindingsPanel
-                findings={scan.findings}
-                statuses={statuses}
-                onCompose={(nextSeeds) => setSeeds(nextSeeds)}
-              />
-            ) : (
-              <EmptyState
-                icon={FileSearch}
-                title="No public listings found"
-                description="That's a good sign. Try adding a former city or an email address to widen the scan."
-                action={
-                  <Link href="/scan" className="btn btn-secondary btn-sm">
-                    Scan again
-                  </Link>
-                }
-              />
-            )
-          ) : null}
-
           {tab === "swarm" ? (
             <SwarmPanel
               profile={scan.profile}
               findings={scan.findings}
               swarmReports={scan.swarmReports}
               statuses={statuses}
+              initialMode={scanMode}
               onMergeSwarmResults={mergeSwarmResults}
               onCompose={(nextSeeds) => setSeeds(nextSeeds)}
               onToast={setToast}
             />
           ) : null}
-
-          {tab === "breaches" ? <BreachesPanel breaches={scan.breaches} /> : null}
 
           {tab === "requests" ? (
             <RequestsPanel
@@ -443,7 +357,7 @@ export function DashboardView() {
               findings={scan.findings}
               profile={scan.profile}
               onEdit={(seed) => setSeeds([seed])}
-              onBrowse={() => setTab("findings")}
+              onBrowse={() => setTab("swarm")}
               onToast={setToast}
             />
           ) : null}
