@@ -33,7 +33,7 @@ export function SiteHeader() {
             Privacy
           </Link>
           <AuthButton />
-          <Link href="/scan" className="btn btn-primary btn-sm">
+          <Link href="/scan" className="btn btn-primary btn-sm hidden sm:inline-flex">
             Start a free scan
             <ArrowUpRight className="size-4" strokeWidth={1.8} aria-hidden />
           </Link>

@@ -96,3 +96,42 @@ export async function sendEmailViaGmail(params: SendEmailParams): Promise<SendEm
 
   return (await response.json()) as SendEmailResult;
 }
+
+/**
+ * Turns the various ways a send can fail into something the person can act on.
+ * Each branch names the cause and the fix, because "Gmail API returned 403"
+ * tells nobody whether to wait, retry, or open a console.
+ */
+export function describeSendError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  const code = (err as { code?: string } | null)?.code ?? "";
+  const text = `${code} ${raw}`;
+
+  if (/popup-blocked|popup-closed-by-user|cancelled-popup-request/i.test(text)) {
+    return "Your browser blocked the Google permission window. Allow pop-ups for this site, or open Untrace in Chrome or Safari directly, then press Send again.";
+  }
+  if (/unauthorized-domain/i.test(text)) {
+    return "This domain is not authorised for Google sign-in. Add it under Firebase Authentication > Settings > Authorized domains.";
+  }
+  if (
+    /access_denied|verification process|app is blocked|has not completed/i.test(text)
+  ) {
+    return "Google blocked the Gmail permission request because the OAuth app is still in testing. Add your Google address as a test user in the Google Cloud console (or publish the app), then press Send again.";
+  }
+  if (/insufficientPermissions|insufficient authentication scopes|ACCESS_TOKEN_SCOPE/i.test(text)) {
+    return "Google signed you in without Gmail permission. Press Send again and allow the “send email on your behalf” checkbox.";
+  }
+  if (/SERVICE_DISABLED|Gmail API has not been used|gmail.*disabled/i.test(text)) {
+    return "The Gmail API is not enabled for this Google Cloud project. Enable it, then press Send again.";
+  }
+  if (/Invalid Credentials|401|UNAUTHENTICATED/i.test(text)) {
+    return "The Gmail permission has expired. Press Send again to renew it.";
+  }
+  if (/quota|rateLimitExceeded|429/i.test(text)) {
+    return "Gmail's rate limit was reached. Wait a minute, then press Send again.";
+  }
+  if (/Invalid (To|From) email address/i.test(text)) {
+    return "One of the addresses is not a valid email address. Check the To field and try again.";
+  }
+  return raw || "Failed to send email. Please check your connection and Gmail permission.";
+}
