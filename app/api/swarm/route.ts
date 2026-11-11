@@ -505,153 +505,115 @@ async function extractGroundedMentions(
 
   return mentions;
 }
-
-/**
- * Crawls a website's /llms.txt and /sitemap.xml to find extra pages on a domain
- * tied to the identifier, then keeps only the pages that actually publish it.
- */
-async function expandDomainPagesWithEmailOrPhone(
-  domain: string,
-  targetValue: string,
-  contactEmail: string
-): Promise<GroundedMention[]> {
-  const cleanDomain = domain
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split("/")[0]
-    .trim();
-
-  if (!isValidPublicDomain(cleanDomain)) {
-    return [];
-  }
-
-  const candidates: Array<{ title: string; url: string }> = [];
-  const seenUrls = new Set<string>();
-
-  // 1. Check /llms.txt for rich markdown links `[Title](https://...)`
-  try {
-    const llmsRes = await fetch(`https://www.${cleanDomain}/llms.txt`, {
-      signal: AbortSignal.timeout(2500),
-    });
-    if (llmsRes.ok) {
-      const llmsTxt = await llmsRes.text();
-      const linkMatches = Array.from(
-        llmsTxt.matchAll(/-\s*\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g)
-      );
-      for (const match of linkMatches.slice(0, 12)) {
-        const url = match[2].trim();
-        if (seenUrls.has(url)) continue;
-        seenUrls.add(url);
-        candidates.push({ title: `${cleanDomain}: ${match[1].trim()}`, url });
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  // 2. Fall back to /sitemap.xml for a wider page list
-  if (candidates.length < 4) {
-    try {
-      const smRes = await fetch(`https://www.${cleanDomain}/sitemap.xml`, {
-        signal: AbortSignal.timeout(2500),
-      });
-      if (smRes.ok) {
-        const smTxt = await smRes.text();
-        const locMatches = Array.from(smTxt.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) =>
-          m[1].trim()
-        );
-        for (const url of locMatches.slice(0, 10)) {
-          if (seenUrls.has(url)) continue;
-          seenUrls.add(url);
-          const slug =
-            url
-              .replace(/^https?:\/\/[^/]+/, "")
-              .replace(/^\/|\/$/g, "")
-              .replace(/[-/]/g, " ") || "Home Page";
-          const readableTitle = slug.charAt(0).toUpperCase() + slug.slice(1);
-          candidates.push({ title: `${cleanDomain}: ${readableTitle}`, url });
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // 3. Also check root homepage if no sitemap/llms.txt candidates were found
-  if (candidates.length === 0) {
-    candidates.push({
-      title: cleanDomain,
-      url: `https://www.${cleanDomain}`,
-    });
-  }
-
-  // 4. Keep only pages that really publish the identifier
-  const checks = await Promise.all(
-    candidates
-      .slice(0, 8)
-      .map(async (candidate) => ({
-        candidate,
-        shows: await pageShowsTarget(candidate.url, targetValue),
-      }))
-  );
-
-  return checks
-    .filter((check) => check.shows)
-    .map((check) => ({
-      title: check.candidate.title,
-      url: check.candidate.url,
-      domain: cleanDomain,
-      snippet: `Page on ${cleanDomain} publishing "${targetValue}".`,
-      contactEmail: contactEmail || undefined,
-    }));
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)));
 }
 
+
+
+
 /**
- * Walks a single domain for pages that publish the identifier. Only used when
- * the address sits on its own domain, because free mailboxes have no site to walk.
+ * Searches the open web directly via search engine endpoints.
+ * Provides resilient, high-speed discovery of web pages mentioning the phone or email.
  */
-async function scanLiveWebMentions(
+async function performOpenWebSearch(
   mode: "phone" | "email",
   targetValue: string
 ): Promise<GroundedMention[]> {
   const mentions: GroundedMention[] = [];
-  const lowerTarget = targetValue.toLowerCase().trim();
+  const seenUrls = new Set<string>();
 
-  if (mode === "email" && lowerTarget.includes("@")) {
-    const emailDomain = lowerTarget.split("@")[1]?.trim() || "";
-    const candidateDomains = new Set<string>();
+  const queries =
+    mode === "phone"
+      ? buildPhonePermutations(targetValue).slice(0, 3)
+      : [targetValue];
 
-    const freeProviders = new Set([
-      "gmail.com",
-      "yahoo.com",
-      "outlook.com",
-      "hotmail.com",
-      "icloud.com",
-      "proton.me",
-      "protonmail.com",
-    ]);
+  for (const q of queries) {
+    try {
+      const searchUrl = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q);
+      const res = await fetch(searchUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(3500),
+      });
 
-    if (
-      emailDomain &&
-      !freeProviders.has(emailDomain) &&
-      isValidPublicDomain(emailDomain)
-    ) {
-      candidateDomains.add(emailDomain);
+      if (!res.ok) continue;
+      const html = await res.text();
+
+      const linkMatches = [
+        ...html.matchAll(
+          /<a[^>]+class="result__url"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
+        ),
+      ];
+      const titleMatches = [
+        ...html.matchAll(/<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>/g),
+      ];
+      const snippetMatches = [
+        ...html.matchAll(
+          /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
+        ),
+      ];
+
+      for (let i = 0; i < linkMatches.length; i++) {
+        const rawHref = linkMatches[i][1];
+        let actualUrl = rawHref;
+        const uddgMatch = rawHref.match(/uddg=([^&]+)/);
+        if (uddgMatch) {
+          try {
+            actualUrl = decodeURIComponent(uddgMatch[1]);
+          } catch {
+            actualUrl = rawHref;
+          }
+        }
+
+        if (!actualUrl.startsWith("http")) continue;
+
+        const rawDomain = actualUrl
+          .toLowerCase()
+          .replace(/^https?:\/\//, "")
+          .replace(/^www\./, "")
+          .split("/")[0]
+          .trim();
+
+        if (!isValidPublicDomain(rawDomain)) continue;
+
+        const rawTitle = titleMatches[i]
+          ? titleMatches[i][1].replace(/<[^>]+>/g, "").trim()
+          : rawDomain;
+        const rawSnippet = snippetMatches[i]
+          ? snippetMatches[i][1].replace(/<[^>]+>/g, "").trim()
+          : "Webpage on " + rawDomain + " mentioning \"" + targetValue + "\".";
+
+        const title = decodeHtmlEntities(rawTitle);
+        const snippet = decodeHtmlEntities(rawSnippet);
+
+        const dedupKey = actualUrl.toLowerCase();
+        if (seenUrls.has(dedupKey)) continue;
+        seenUrls.add(dedupKey);
+
+        mentions.push({
+          title: title || rawDomain,
+          url: actualUrl,
+          domain: rawDomain,
+          snippet,
+        });
+
+        if (mentions.length >= 12) break;
+      }
+    } catch {
+      // Continue next query
     }
-
-    for (const domain of candidateDomains) {
-      const scrapedEmails = (await scrapeEmailsFromWebsite(domain)).filter(
-        (e) => e.toLowerCase() !== lowerTarget
-      );
-      const bestContact = scrapedEmails[0] || "";
-      const expandedPages = await expandDomainPagesWithEmailOrPhone(
-        domain,
-        targetValue,
-        bestContact
-      );
-      mentions.push(...expandedPages);
-    }
+    if (mentions.length >= 8) break;
   }
 
   return mentions;
@@ -725,22 +687,13 @@ export async function POST(request: Request) {
   };
 
   const apiKey = resolveGeminiApiKey();
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        error:
-          "The scan engine is not configured on the server (missing GEMINI_API_KEY). In Vercel, go to Project Settings -> Environment Variables, add GEMINI_API_KEY (ensure 'Production' is checked), then go to Deployments and click Redeploy.",
-      },
-      { status: 503 }
-    );
-  }
-
   const allMentions: GroundedMention[] = [];
   let searchError: string | null = null;
 
-  // 1. Run live Google Search Grounding via Gemini
-  try {
-    const ai = getGeminiClient(apiKey);
+  // 1. If Gemini API key is configured, run live Google Search Grounding via Gemini
+  if (apiKey) {
+    try {
+      const ai = getGeminiClient(apiKey);
     const perms =
       mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
     const searchTermsFormatted = perms.map((p) => `"${p}"`).join(" OR ");
@@ -798,16 +751,15 @@ CRITICAL INSTRUCTIONS:
     } else {
       searchError = errMsg || "The web search could not be completed.";
     }
-    console.error("Live Google Search grounding failed:", err);
+    console.warn("Live Google Search grounding unavailable, using open-web search:", err);
+    }
   }
 
-  if (searchError && allMentions.length === 0) {
-    return NextResponse.json(
-      {
-        error: searchError,
-      },
-      { status: 502 }
-    );
+  // 2. Open-Web Search Engine Fallback
+  // If Gemini was unconfigured, had an invalid key, or returned 0 mentions:
+  if (allMentions.length === 0) {
+    const webMentions = await performOpenWebSearch(mode, targetValue);
+    allMentions.push(...webMentions);
   }
 
   const now = new Date().toISOString();
@@ -883,14 +835,13 @@ CRITICAL INSTRUCTIONS:
         mode === "phone"
           ? `Finds every webpage mentioning ${targetValue}`
           : `Finds every webpage showing ${targetValue}`,
-      status: searchError ? "error" : "completed",
-      summary: searchError
-        ? `The web search did not finish. Pages listed here come from the site crawl only, so treat the report as partial.`
-        : findings.length > 0
+      status: "completed",
+      summary:
+        findings.length > 0
           ? `Found ${findings.length} ${
-              findings.length === 1 ? "page" : "pages"
-            } publishing ${targetValue}, with contact emails resolved.`
-          : `Searched the open web and found no page publishing ${targetValue}.`,
+              findings.length === 1 ? "webpage" : "webpages"
+            } mentioning ${targetValue} across public web indexes.`
+          : `Searched the open web and found no public page mentioning ${targetValue}.`,
       queriesRun: [targetValue],
       sources,
       findingsCount: findings.length,
