@@ -6,15 +6,15 @@ import { SiteFooter } from "@/components/site-footer";
 import { ScanFlow } from "@/components/scan/scan-flow";
 
 export const metadata: Metadata = {
-  title: "Check the 45 sites selling your address",
+  title: "Find the sites publishing your number",
   description:
-    "One free check across 45 people-search sites, marketing databases and ad profiles. See every listing that holds your name, address and phone number, and who to write to about it.",
+    "Enter a phone number or an email address. Untrace searches the open web and 45 data brokers, then shows every page that publishes it and who to write to.",
   alternates: { canonical: "/scan" },
   openGraph: {
     url: "/scan",
-    title: "Check the 45 sites selling your address | Untrace",
+    title: "Find the sites publishing your number | Untrace",
     description:
-      "See which directories publish your name, address and phone number, and who to write to about it.",
+      "See which directories publish your number or address, and who to write to about it.",
     images: [
       {
         url: "/og.png",
@@ -50,11 +50,11 @@ export default async function ScanPage({
             Step one of three
           </p>
           <h1 className="mt-4 text-[2.4rem] leading-[1.06] sm:text-[3rem]">
-            Let&apos;s find where you live online.
+            Find every page that has your number or address.
           </h1>
           <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-soft">
-            This takes a few seconds. Only your name and city are required.
-            Everything else makes the report sharper.
+            One field is enough: a phone number or an email address. A name is
+            optional and only used to sign the letters.
           </p>
         </div>
 

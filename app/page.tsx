@@ -20,8 +20,6 @@ import { SiteFooter } from "@/components/site-footer";
 import { CategoryIcon, SectionLabel } from "@/components/ui";
 import { BROKERS } from "@/lib/brokers";
 import { BREACH_COUNT } from "@/lib/breaches";
-import { runScan } from "@/lib/scan";
-import { buildRemovalEmail } from "@/lib/removal";
 import { CATEGORIES, type Category } from "@/lib/types";
 import {
   SITE_DESCRIPTION,
@@ -35,7 +33,6 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   alternates: { canonical: "/" },
 };
-
 
 const CATEGORY_ORDER: Category[] = [
   "people-search",
@@ -61,21 +58,44 @@ const TICKER = [
   "PeekYou",
 ];
 
-const STEPS = [
+const EXPOSURE = [
   {
     icon: Search,
-    title: "Enter your client's details",
-    body: "Provide a name, city, and optional email, phone, or username. Add any extra context to guide the search.",
+    title: "A number, reverse-looked",
+    body: "Caller-ID apps and lookup sites tie a phone number to a name, a city and sometimes a photo. The spam calls are only the part you can hear.",
   },
   {
     icon: Layers,
-    title: "Deploy the 4-Agent AI Swarm",
-    body: "Four specialized AI agents search across the entire internet via Google Search to find directories, B2B brokers, and public records, plus each site's DPO email.",
+    title: "An email, indexed",
+    body: "Business databases file addresses by name, role and employer, then resell the index to recruiters, insurers and anyone with a scraper.",
+  },
+  {
+    icon: FileCheck2,
+    title: "A profile, sold",
+    body: "People-search directories rebuild you from public records and sell lookups. Some also sell a paid removal, which is the same business twice.",
+  },
+];
+
+const STEPS = [
+  {
+    icon: Search,
+    title: "Start with one identifier",
+    body: "A phone number or an email address is enough. A name is optional and only used to sign the letters.",
+  },
+  {
+    icon: Layers,
+    title: "Search the open web",
+    body: "A grounded AI search reads the pages that mention your identifier, then we add the curated brokers, caller-ID apps and B2B indexes.",
+  },
+  {
+    icon: Mail,
+    title: "Write to each owner",
+    body: "Every request names the fields to delete, the statute for your country, a deadline and the regulator to escalate to.",
   },
   {
     icon: Send,
-    title: "Send removal emails in one click",
-    body: "Every discovered source gets a tailored GDPR, CCPA, or DPDP deletion notice addressed to its privacy officer. Review and send straight from your Gmail.",
+    title: "Send and keep the clock",
+    body: "Send through your own Gmail, copy the text, or open it in your mail app. Each request gets a status and a follow-up date.",
   },
 ];
 
@@ -83,40 +103,91 @@ const PROMISES = [
   {
     icon: FileCheck2,
     title: "Written, not shouted",
-    body: "Each email cites the specific law, the fields you want gone, and a deadline. That's what gets answers.",
+    body: "A polite demand that cites the specific law, the fields you want gone and a deadline gets answered. An angry note does not.",
   },
   {
     icon: Clock3,
-    title: "Followed up",
-    body: "Companies get 30 to 45 days. If nothing happens, Untrace drafts the follow-up, and tells you where to escalate.",
+    title: "Followed up, not forgotten",
+    body: "Most directories act in one to three weeks. Statutory limits run to 30 or 45 days. Untrace drafts the reminder and names where to escalate.",
   },
   {
     icon: Lock,
-    title: "Private & synced to your account",
-    body: "Your scan reports and removal queue stay private in your browser or synced securely to your authenticated account.",
+    title: "Yours, and only yours",
+    body: "The report stays in your browser. Sign in with Google only if you want it synced across devices and ready to send from Gmail.",
+  },
+];
+
+const LAWS = [
+  {
+    country: "United States",
+    law: "CCPA, as amended by the CPRA",
+    deadline: "45 days",
+    escalation: "California Privacy Protection Agency or your state attorney general",
+  },
+  {
+    country: "United Kingdom",
+    law: "UK GDPR, Article 17, and the Data Protection Act 2018",
+    deadline: "One month",
+    escalation: "Information Commissioner's Office",
+  },
+  {
+    country: "European Union",
+    law: "GDPR, Article 17, right to erasure",
+    deadline: "One month",
+    escalation: "Your national supervisory authority",
+  },
+  {
+    country: "India",
+    law: "Digital Personal Data Protection Act 2023, sections 12 and 13",
+    deadline: "30 days",
+    escalation: "Data Protection Board of India",
+  },
+  {
+    country: "Canada",
+    law: "PIPEDA, Principle 4.9 and section 8(8)",
+    deadline: "30 days",
+    escalation: "Office of the Privacy Commissioner",
+  },
+  {
+    country: "Australia",
+    law: "Privacy Act 1988, Australian Privacy Principles 11 and 13",
+    deadline: "30 days",
+    escalation: "Office of the Australian Information Commissioner",
   },
 ];
 
 const QUESTIONS = [
   {
-    q: "Am I allowed to do this?",
-    a: "Yes. Privacy laws in California (CCPA), across the EU and UK (GDPR), India (DPDP Act), and dozens of other jurisdictions give individuals the right to demand deletion of their personal data and opt out of its sale.",
+    q: "How do I remove my phone number from the internet?",
+    a: "Three things have to happen. The caller-ID apps and reverse-lookup sites have to unlist the number, the directories that cached it have to remove the page, and any lead database that resold it has to suppress the record. Untrace finds those pages for a number or an email address, then writes one deletion request per owner, with the contact address already resolved.",
   },
   {
-    q: "How does the AI Agent Swarm find exposures?",
-    a: "When you start a scan, four specialized Gemini AI agents run live Google Search reconnaissance across the entire internet, checking global and regional people-search directories, caller-ID apps, B2B lead databases, social archives, and Data Protection Officer (DPO) registries.",
+    q: "Is it legal to demand that my data be deleted?",
+    a: "Yes. Privacy law in California, across the EU and UK, in India, Canada and Australia gives you the right to demand deletion of your personal data and to object to its sale. Most brokers run an opt-out page precisely because the law requires one. Untrace does the tedious part: finding them, naming the right statute and keeping the clock.",
   },
   {
-    q: "Does Untrace send emails automatically without my review?",
-    a: "No. Every deletion email is drafted for your review first. You can dispatch it with one click via your connected Gmail account (with confirmation) or open it pre-filled in Gmail Web or your mail app.",
+    q: "How does the AI search find my listings?",
+    a: "The scan runs a grounded web search for the exact identifier you enter, phone number or email address, and reads the pages that mention it: directories, agency sites, contact footers, blogs and B2B indexes. Each result is checked against the contact address published on that site. The 45 curated brokers are the floor, not the ceiling.",
+  },
+  {
+    q: "Does Untrace send emails without my review?",
+    a: "Never. Each message is drafted for you first. You can send it through your connected Gmail with one click, copy it into your own client, or open it pre-filled in your mail app. Nothing leaves your device until you press send.",
   },
   {
     q: "How long does a removal take?",
-    a: "Most people-search sites and B2B brokers act within one to three weeks. Companies have 30 to 45 days under statutory privacy laws to respond. Untrace tracks a follow-up date for each sent request.",
+    a: "Most people-search sites act within one to three weeks. The statutory maximum is 30 days in India, Canada and Australia, one month under GDPR and the UK GDPR, and 45 days under the CCPA. Untrace tracks a follow-up date for every request so nothing quietly expires.",
   },
   {
-    q: "What if a company ignores me or says no?",
-    a: "First, send a follow-up restating the statutory deadline. If ignored, you can escalate to your national data protection authority (or state attorney general) and request search engine de-indexing.",
+    q: "What if a company ignores the request?",
+    a: "Send the follow-up first. It restates the demand and the statutory deadline. If that is ignored too, the letter names the regulator you can complain to and you can ask search engines to de-index the page. Both routes are one click from your report.",
+  },
+  {
+    q: "Do I need an account?",
+    a: "No. A scan runs without signing in and the report is kept in your browser. Signing in with Google is optional: it syncs your report to a private record only you can read and unlocks one-click sending through the Gmail API, which requests the send-only scope.",
+  },
+  {
+    q: "What does it cost?",
+    a: "Nothing to scan, and no card is requested. You keep the report, the letters and the tracker whether or not you ever connect an account.",
   },
 ];
 
@@ -137,22 +208,25 @@ const STRUCTURED_DATA = {
       "@id": `${SITE_URL}/#organization`,
       name: SITE_NAME,
       url: SITE_URL,
-      logo: `${SITE_URL}/favicon.svg`,
+      logo: `${SITE_URL}/brand/logo.png`,
     },
     {
       "@type": "WebApplication",
+      "@id": `${SITE_URL}/#app`,
       name: SITE_NAME,
       url: SITE_URL,
       applicationCategory: "SecurityApplication",
       operatingSystem: "Any",
       browserRequirements: "Requires JavaScript",
       description: SITE_DESCRIPTION,
+      isAccessibleForFree: true,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       featureList: [
-        "Open-web AI Agent Swarm across people-search sites, B2B brokers and archives worldwide",
-        "Automatic DPO and privacy officer email resolution",
-        "Generate statutory GDPR, CCPA, and DPDP deletion requests",
-        "1-click Gmail dispatch and follow-up tracking",
+        "Phone number and email address exposure scan across the open web",
+        "45 curated data brokers with their official opt-out pages",
+        "Statutory deletion requests for CCPA, GDPR, UK GDPR, DPDP, PIPEDA and the Australian Privacy Act",
+        "One-click sending through the connected Gmail account",
+        "Request tracking with follow-up reminders and CSV export",
       ],
     },
     {
@@ -168,21 +242,20 @@ const STRUCTURED_DATA = {
 };
 
 const PREVIEW_EMAIL = {
-  contactEmail: "privacy-requests@spokeo.com",
-  subject: "Request to delete personal data and opt out of sale (CCPA / GDPR)",
-  body: `To the Privacy & Compliance Team,
+  contactEmail: "privacy@spokeo.com",
+  subject: "Erasure request under Article 17 GDPR (name and phone number)",
+  body: `To the Privacy Team,
 
-I am writing to formally request the permanent deletion and suppression of all personal information concerning me held across your directory.
+I am the data subject identified below. I am writing to exercise my right to erasure under Article 17(1) of the GDPR, and my right to object to processing under Article 21.
 
-Details to identify and suppress:
-- Full Legal Name: [Your Name]
-- Location: [Your City, Region]
-- Associated Email: [Your Email]
+Records to erase:
+- Full name: [Your name]
+- Phone number: [Your number]
+- Listing URL: [The profile found by the scan]
 
-Legal Basis:
-Under applicable privacy legislation (including CCPA / GDPR / DPDP), I hereby exercise my right to erasure and request that you cease selling, licensing, or publishing my personal records.
+Please delete the listing, stop publishing it, and confirm in writing within one month, as Article 12(3) requires. If you sell or share this record with third parties, tell me who received it so I can write to them as well.
 
-Please confirm suppression within the statutory response window.`,
+If I do not hear from you by [date], I will complain to my national supervisory authority.`,
 };
 
 export default function HomePage() {
@@ -196,11 +269,11 @@ export default function HomePage() {
       />
 
       <main>
-        {/* ── Hero ─────────────────────────────────────────────────────── */}
+        {/* Hero */}
         <section className="relative overflow-hidden">
           <div className="container-page grid items-center gap-14 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-24">
             <div className="animate-fade-up">
-              <SectionLabel>AI-Powered Personal Data Removal</SectionLabel>
+              <SectionLabel>AI-powered personal data removal</SectionLabel>
 
               <h1 className="mt-5 text-[2.5rem] leading-[1.04] tracking-[-0.02em] text-ink sm:text-[3rem] lg:text-[3.5rem]">
                 Hundreds of sites sell
@@ -209,27 +282,27 @@ export default function HomePage() {
               </h1>
 
               <p className="mt-7 max-w-xl text-[1.0625rem] leading-[1.7] text-ink-soft">
-                Untrace deploys a 4-agent AI reconnaissance swarm across the open
-                internet to find every directory, data broker, and archive holding
-                your details, resolving their privacy emails so you can send legal
-                deletion requests in one click via Gmail.
+                Start with the phone number or email address that keeps turning
+                up. Untrace searches the open web and a 45-source directory of
+                brokers, shows every page that carries your details, and writes
+                the deletion letter to each owner in the law that applies to you.
               </p>
 
               <div className="mt-9 flex flex-wrap items-center gap-3">
                 <Link href="/scan" className="btn btn-primary">
-                  Deploy AI Agent Swarm
+                  Run a free scan
                   <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
                 </Link>
-                <Link href="/dashboard" className="btn btn-secondary">
-                  View report
+                <Link href="#coverage" className="btn btn-secondary">
+                  See what we cover
                 </Link>
               </div>
 
               <ul className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[0.8125rem] text-muted">
                 {[
-                  "Open-web Google Search AI Swarm",
-                  "Resolves DPO & privacy emails",
-                  "1-click Gmail removal dispatch",
+                  "Phone or email, no name needed",
+                  "45 verified opt-out pages",
+                  "Send from your own Gmail",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-1.5">
                     <Check className="size-3.5 text-moss" strokeWidth={2.2} aria-hidden />
@@ -263,7 +336,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Quiet source ticker */}
+          {/* Source strip */}
           <div className="border-y border-line bg-surface/60">
             <div className="container-page flex flex-wrap items-center gap-x-4 gap-y-2 py-4">
               <span className="shrink-0 text-[0.6875rem] uppercase tracking-[0.18em] text-muted">
@@ -271,10 +344,7 @@ export default function HomePage() {
               </span>
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 {TICKER.map((name) => (
-                  <span
-                    key={name}
-                    className="shrink-0 text-[0.8125rem] text-ink-soft/80"
-                  >
+                  <span key={name} className="shrink-0 text-[0.8125rem] text-ink-soft/80">
                     {name}
                   </span>
                 ))}
@@ -286,17 +356,49 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── How it works ─────────────────────────────────────────────── */}
-        <section id="how" className="scroll-mt-24 py-20 md:py-28">
+        {/* The exposure */}
+        <section className="py-20 md:py-28">
+          <div className="container-page">
+            <div className="max-w-2xl">
+              <SectionLabel>The exposure</SectionLabel>
+              <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
+                One identifier is enough to find you.
+              </h2>
+              <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-soft">
+                Reverse-lookup sites, caller-ID apps, lead databases and old
+                breach dumps all key off the same two things: a phone number and
+                an email address. None of them asked you first.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-5 md:grid-cols-3">
+              {EXPOSURE.map((item) => (
+                <article
+                  key={item.title}
+                  className="card flex flex-col p-7 transition-colors duration-300 hover:border-line-strong"
+                >
+                  <span className="grid size-10 place-items-center rounded-xl border border-line bg-mist text-moss">
+                    <item.icon className="size-[18px]" strokeWidth={1.6} aria-hidden />
+                  </span>
+                  <h3 className="mt-6 text-xl text-ink">{item.title}</h3>
+                  <p className="mt-2.5 text-sm leading-relaxed text-muted">{item.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section id="how" className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28">
           <div className="container-page">
             <div className="max-w-2xl">
               <SectionLabel>How it works</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
-                Three quiet steps, then the internet forgets a little.
+                Four steps, and only the first one is yours.
               </h2>
             </div>
 
-            <ol className="mt-12 grid gap-5 md:grid-cols-3">
+            <ol className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {STEPS.map((step, index) => (
                 <li
                   key={step.title}
@@ -310,7 +412,7 @@ export default function HomePage() {
                       0{index + 1}
                     </span>
                   </div>
-                  <h3 className="mt-6 text-xl text-ink">{step.title}</h3>
+                  <h3 className="mt-6 text-lg text-ink">{step.title}</h3>
                   <p className="mt-2.5 text-sm leading-relaxed text-muted">{step.body}</p>
                 </li>
               ))}
@@ -318,8 +420,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── What we find ─────────────────────────────────────────────── */}
-        <section id="sources" className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28">
+        {/* What we find */}
+        <section id="sources" className="scroll-mt-24 py-20 md:py-28">
           <div className="container-page">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div className="max-w-2xl">
@@ -363,13 +465,13 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── The request itself ──────────────────────────────────────── */}
-        <section className="py-20 md:py-28">
+        {/* The request */}
+        <section className="border-y border-line bg-surface/60 py-20 md:py-28">
           <div className="container-page grid items-center gap-14 lg:grid-cols-[0.92fr_1.08fr]">
             <div>
-              <SectionLabel>The removal request</SectionLabel>
+              <SectionLabel>The deletion request</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
-                The email is the hard part. It&apos;s already written.
+                The letter is the hard part. It is already written.
               </h2>
               <p className="mt-5 max-w-lg text-[0.9375rem] leading-relaxed text-ink-soft">
                 A vague &ldquo;please delete my data&rdquo; note gets ignored.
@@ -415,33 +517,75 @@ export default function HomePage() {
               </dl>
 
               <div className="max-h-[22rem] overflow-hidden px-5 py-5 text-[0.78rem] leading-[1.75] text-ink-soft">
-                <p className="whitespace-pre-line">
-                  {PREVIEW_EMAIL.body}
-                </p>
+                <p className="whitespace-pre-line">{PREVIEW_EMAIL.body}</p>
               </div>
 
               <div className="flex items-center justify-between gap-3 border-t border-line bg-mist/50 px-5 py-3.5">
                 <span className="flex items-center gap-1.5 text-[0.6875rem] text-muted">
                   <ShieldCheck className="size-3.5 text-moss" strokeWidth={1.7} aria-hidden />
-                  Cites statutory privacy law · 45-day deadline
+                  Names the statute · Sets a deadline
                 </span>
-                <span className="text-[0.6875rem] text-muted">Gmail API · Email · Track</span>
+                <span className="text-[0.6875rem] text-muted">Gmail · Copy · Mail app</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── Coverage ────────────────────────────────────────────────── */}
-        <section
-          id="coverage"
-          className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28"
-        >
+        {/* Laws */}
+        <section id="laws" className="scroll-mt-24 py-20 md:py-28">
+          <div className="container-page">
+            <div className="max-w-2xl">
+              <SectionLabel>The legal footing</SectionLabel>
+              <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
+                The right law, cited by name.
+              </h2>
+              <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-soft">
+                Deletion is a statutory right in more places than most people
+                realise. The letter adapts to your country and names the authority
+                you can escalate to if the deadline passes.
+              </p>
+            </div>
+
+            <div className="mt-10 overflow-x-auto">
+              <table className="w-full min-w-[46rem] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-line-strong text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
+                    <th scope="col" className="py-3 pr-6 font-medium">Country</th>
+                    <th scope="col" className="py-3 pr-6 font-medium">Law cited</th>
+                    <th scope="col" className="py-3 pr-6 font-medium">Answer due</th>
+                    <th scope="col" className="py-3 font-medium">If ignored</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {LAWS.map((row) => (
+                    <tr key={row.country} className="border-b border-line">
+                      <th scope="row" className="py-4 pr-6 font-medium text-ink">
+                        {row.country}
+                      </th>
+                      <td className="py-4 pr-6 text-ink-soft">{row.law}</td>
+                      <td className="py-4 pr-6 text-ink-soft">{row.deadline}</td>
+                      <td className="py-4 text-muted">{row.escalation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-5 text-xs leading-relaxed text-muted">
+              Those are statutory maximums, not typical waits. People-search
+              directories usually act within one to three weeks.
+            </p>
+          </div>
+        </section>
+
+        {/* Coverage */}
+        <section id="coverage" className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28">
           <div className="container-page">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div className="max-w-2xl">
                 <SectionLabel>Coverage</SectionLabel>
                 <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
-                  {BROKERS.length} sources on the first pass.
+                  {BROKERS.length} verified opt-out pages, plus whatever the search finds.
                 </h2>
                 <p className="mt-4 max-w-xl text-[0.9375rem] leading-relaxed text-ink-soft">
                   Every name below links to that company&apos;s own opt-out page.
@@ -449,7 +593,7 @@ export default function HomePage() {
                 </p>
               </div>
               <Link href="/scan" className="btn btn-secondary btn-sm self-start md:self-auto">
-                Check your name
+                Check your number
                 <ArrowUpRight className="size-4" strokeWidth={1.8} aria-hidden />
               </Link>
             </div>
@@ -464,7 +608,10 @@ export default function HomePage() {
                     className="group flex items-center justify-between gap-3 border-b border-line py-3 transition-colors hover:border-line-strong"
                   >
                     <span className="flex min-w-0 items-center gap-2.5">
-                      <span className="size-1.5 shrink-0 rounded-full bg-line-strong transition-colors group-hover:bg-moss" aria-hidden />
+                      <span
+                        className="size-1.5 shrink-0 rounded-full bg-line-strong transition-colors group-hover:bg-moss"
+                        aria-hidden
+                      />
                       <span className="truncate text-sm text-ink-soft transition-colors group-hover:text-ink">
                         {broker.name}
                       </span>
@@ -480,15 +627,60 @@ export default function HomePage() {
             </ul>
 
             <p className="mt-8 max-w-2xl text-xs leading-relaxed text-muted">
-              Opt-out pages change address now and then. Every link opens the
-              company&apos;s current privacy or suppression page, and your report
-              always shows the destination before you send anything.
+              Opt-out pages move now and then. Every link opens the company&apos;s
+              current privacy or suppression page, and your report always shows the
+              destination before you send anything.
             </p>
           </div>
         </section>
 
-        {/* ── Questions ───────────────────────────────────────────────── */}
-        <section id="questions" className="scroll-mt-24 py-20 md:py-28">
+        {/* Where your data lives */}
+        <section className="py-20 md:py-28">
+          <div className="container-page grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
+            <div>
+              <SectionLabel>Your data</SectionLabel>
+              <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.4rem]">
+                The report is yours. So is the choice.
+              </h2>
+              <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted">
+                Untrace runs without an account, and works the same way if you
+                never create one. Read the{" "}
+                <Link href="/privacy" className="text-moss underline decoration-moss/30 underline-offset-4 hover:decoration-moss">
+                  privacy note
+                </Link>{" "}
+                for the full version.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="card p-6">
+                <span className="grid size-9 place-items-center rounded-lg border border-line bg-mist text-ink-soft">
+                  <Lock className="size-4" strokeWidth={1.7} aria-hidden />
+                </span>
+                <h3 className="mt-5 text-lg text-ink">In your browser</h3>
+                <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                  The default. Your report and request history sit in local
+                  storage, on this device, with no server copy and no account.
+                </p>
+              </div>
+
+              <div className="card p-6">
+                <span className="grid size-9 place-items-center rounded-lg border border-line bg-mist text-ink-soft">
+                  <ShieldCheck className="size-4" strokeWidth={1.7} aria-hidden />
+                </span>
+                <h3 className="mt-5 text-lg text-ink">With a Google account</h3>
+                <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                  Optional. Signing in syncs the report to a private record only
+                  you can read and unlocks one-click sending through Gmail, with
+                  the send-only scope.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Questions */}
+        <section id="questions" className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28">
           <div className="container-page grid gap-12 lg:grid-cols-[0.7fr_1.3fr]">
             <div>
               <SectionLabel>Questions</SectionLabel>
@@ -496,7 +688,7 @@ export default function HomePage() {
                 The things people ask before they start.
               </h2>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">
-                Still unsure? Read our own{" "}
+                Anything else? Write to the address in the{" "}
                 <Link href="/privacy" className="text-moss underline decoration-moss/30 underline-offset-4 hover:decoration-moss">
                   privacy note
                 </Link>
@@ -524,26 +716,26 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Closing ─────────────────────────────────────────────────── */}
-        <section className="pb-4">
+        {/* Closing */}
+        <section className="pb-4 pt-20 md:pt-28">
           <div className="container-page">
             <div className="card flex flex-col items-center gap-6 px-6 py-16 text-center md:py-20">
               <span className="grid size-11 place-items-center rounded-xl border border-line bg-moss-soft text-moss">
                 <ShieldCheck className="size-5" strokeWidth={1.6} aria-hidden />
               </span>
               <h2 className="max-w-xl text-[2.1rem] leading-tight sm:text-[2.8rem]">
-                Start with your own name.
+                Start with the number that keeps ringing.
               </h2>
               <p className="max-w-md text-sm leading-relaxed text-muted">
                 A scan takes a few seconds. Knowing exactly who holds your data
                 is the part almost nobody has done.
               </p>
               <Link href="/scan" className="btn btn-primary mt-1">
-                Start a free scan
+                Run a free scan
                 <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
               </Link>
               <p className="text-xs text-muted">
-                No account. Nothing sent without your review.
+                Free. No card. Nothing sent without your review.
               </p>
             </div>
           </div>
