@@ -1,0 +1,42 @@
+import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
+import { Logo } from "./logo";
+
+const NAV = [
+  { href: "/#how", label: "How it works" },
+  { href: "/#sources", label: "What we find" },
+  { href: "/#coverage", label: "Coverage" },
+  { href: "/#questions", label: "Questions" },
+];
+
+export function SiteHeader() {
+  return (
+    <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-md">
+      <div className="container-page flex h-[4.5rem] items-center justify-between gap-6">
+        <Logo />
+
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="rounded-full px-3 py-2 text-sm text-ink-soft transition-colors hover:bg-mist hover:text-ink"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-2">
+          <Link href="/privacy" className="hidden text-sm text-muted transition-colors hover:text-ink sm:block">
+            Privacy
+          </Link>
+          <Link href="/scan" className="btn btn-primary btn-sm">
+            Start a free scan
+            <ArrowUpRight className="size-4" strokeWidth={1.8} aria-hidden />
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
