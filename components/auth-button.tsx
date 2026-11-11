@@ -70,7 +70,7 @@ export function AuthButton() {
 
   return (
     <div className="relative inline-flex items-center" ref={menuRef}>
-      {/* Auth error notification / Unauthorized Domain Fix Assistant */}
+      {/* Auth error notification / unauthorised domain fix assistant */}
       {authError && !isUnauthorizedDomain && (
         <div className="absolute right-0 top-12 z-50 flex items-center gap-2 rounded-xl border border-clay/30 bg-clay-soft px-3 py-2 text-xs text-clay shadow-md">
           <AlertCircle className="size-4 shrink-0" />

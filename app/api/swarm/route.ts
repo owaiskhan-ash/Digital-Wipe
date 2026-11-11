@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { normaliseProfile, type RawProfileInput } from "@/lib/scan";
+import { normaliseProfile, type RawProfileInput } from "@/lib/profile";
 import firebaseConfig from "@/firebase-applet-config.json";
 import type {
   BreachExposure,
@@ -374,8 +374,35 @@ async function extractGroundedMentions(
 }
 
 /**
- * Crawls a website's /llms.txt and /sitemap.xml to list all pages on that website
- * when an email address or phone number is published across that site.
+ * Returns true only when the page itself carries the identifier.
+ * Sitemaps and llms.txt list every page a site has, not the pages that
+ * publish your details, so each candidate page has to be read before it
+ * can be called a finding.
+ */
+async function pageShowsTarget(url: string, targetValue: string): Promise<boolean> {
+  const lower = targetValue.toLowerCase().trim();
+  const last10 = lower.replace(/\D/g, "").slice(-10);
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(3500),
+    });
+    if (!res.ok) return false;
+    const body = (await res.text()).toLowerCase();
+    if (body.includes(lower)) return true;
+    return last10.length === 10 && body.includes(last10);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Crawls a website's /llms.txt and /sitemap.xml to find extra pages on a domain
+ * tied to the identifier, then keeps only the pages that actually publish it.
  */
 async function expandDomainPagesWithEmailOrPhone(
   domain: string,
@@ -389,7 +416,7 @@ async function expandDomainPagesWithEmailOrPhone(
     .split("/")[0]
     .trim();
 
-  const pages: GroundedMention[] = [];
+  const candidates: Array<{ title: string; url: string }> = [];
   const seenUrls = new Set<string>();
 
   // 1. Check /llms.txt for rich markdown links `[Title](https://...)`
@@ -403,25 +430,18 @@ async function expandDomainPagesWithEmailOrPhone(
         llmsTxt.matchAll(/-\s*\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g)
       );
       for (const match of linkMatches.slice(0, 12)) {
-        const title = match[1].trim();
         const url = match[2].trim();
         if (seenUrls.has(url)) continue;
         seenUrls.add(url);
-        pages.push({
-          title: `${cleanDomain}: ${title}`,
-          url,
-          domain: cleanDomain,
-          snippet: `Page on ${cleanDomain} publishing "${targetValue}" in its contact layout/content.`,
-          contactEmail,
-        });
+        candidates.push({ title: `${cleanDomain}: ${match[1].trim()}`, url });
       }
     }
   } catch {
     // ignore
   }
 
-  // 2. Check /sitemap.xml if /llms.txt didn't yield pages
-  if (pages.length < 4) {
+  // 2. Fall back to /sitemap.xml for a wider page list
+  if (candidates.length < 4) {
     try {
       const smRes = await fetch(`https://www.${cleanDomain}/sitemap.xml`, {
         signal: AbortSignal.timeout(2500),
@@ -440,13 +460,7 @@ async function expandDomainPagesWithEmailOrPhone(
               .replace(/^\/|\/$/g, "")
               .replace(/[-/]/g, " ") || "Home Page";
           const readableTitle = slug.charAt(0).toUpperCase() + slug.slice(1);
-          pages.push({
-            title: `${cleanDomain}: ${readableTitle}`,
-            url,
-            domain: cleanDomain,
-            snippet: `Webpage on ${cleanDomain} displaying "${targetValue}".`,
-            contactEmail,
-          });
+          candidates.push({ title: `${cleanDomain}: ${readableTitle}`, url });
         }
       }
     } catch {
@@ -454,22 +468,30 @@ async function expandDomainPagesWithEmailOrPhone(
     }
   }
 
-  if (pages.length === 0) {
-    pages.push({
-      title: `${cleanDomain}: Website Mention`,
-      url: `https://www.${cleanDomain}`,
-      domain: cleanDomain,
-      snippet: `Website ${cleanDomain} publishes "${targetValue}".`,
-      contactEmail,
-    });
-  }
+  // 3. Keep only pages that really publish the identifier
+  const checks = await Promise.all(
+    candidates
+      .slice(0, 8)
+      .map(async (candidate) => ({
+        candidate,
+        shows: await pageShowsTarget(candidate.url, targetValue),
+      }))
+  );
 
-  return pages;
+  return checks
+    .filter((check) => check.shows)
+    .map((check) => ({
+      title: check.candidate.title,
+      url: check.candidate.url,
+      domain: cleanDomain,
+      snippet: `Page on ${cleanDomain} publishing "${targetValue}".`,
+      contactEmail: contactEmail || undefined,
+    }));
 }
 
 /**
- * Live Web & Domain Mention Scanner that checks live websites, sitemaps, and bundles
- * to find all pages publishing the user's phone number or email address.
+ * Walks a single domain for pages that publish the identifier. Only used when
+ * the address sits on its own domain, because free mailboxes have no site to walk.
  */
 async function scanLiveWebMentions(
   mode: "phone" | "email",
@@ -477,58 +499,7 @@ async function scanLiveWebMentions(
 ): Promise<GroundedMention[]> {
   const mentions: GroundedMention[] = [];
   const lowerTarget = targetValue.toLowerCase().trim();
-  const digits = targetValue.replace(/\D/g, "");
-  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
 
-  // 1. Phone Number Live Mentions
-  if (mode === "phone" && last10 === "9819708112") {
-    mentions.push(
-      {
-        title: "Stalite Media: Best Performance Marketing Agency in Mumbai",
-        url: "https://www.stalite.in/performance-marketing",
-        domain: "stalite.in",
-        snippet: `stalitemedia@gmail.com +91 9653614716 +91 9819708112 · MENU · HOME · SMM · PERFORMANCE (ADS) · WEB/APP DEV · OUR TEAM`,
-        contactEmail: "stalitemedia@gmail.com",
-      },
-      {
-        title: "Stalite Media: Top Web Development Company in Mumbai",
-        url: "https://www.stalite.in/web-development",
-        domain: "stalite.in",
-        snippet: `stalitemedia@gmail.com +91 9653614716 +91 9819708112 · Custom Website & Web Development Company in Mumbai`,
-        contactEmail: "Owais@stalite.in",
-      },
-      {
-        title: "adryvo.in: Ezzi Arts & Frames | Custom B2B / B2C Visualizer App Case Study",
-        url: "https://www.adryvo.in/case-study/ezzi-arts",
-        domain: "adryvo.in",
-        snippet: `Published case study page on adryvo.in indexing phone number +91 9819708112 and contact footer.`,
-        contactEmail: "owaiskhan@adryvo.in",
-      },
-      {
-        title: "adryvo.in: Programmatic Advertising and Performance Marketing for Andheri",
-        url: "https://www.adryvo.in/blog/programmatic-advertising-performance-marketing-andheri-healthcare",
-        domain: "adryvo.in",
-        snippet: `owaiskhan@adryvo.in +91 9819708112 · Privacy Policy · Terms of Service · Blog article footer mention.`,
-        contactEmail: "owaiskhan@adryvo.in",
-      },
-      {
-        title: "adryvo.in: Why Standard SEO Isn't Enough: Full-Funnel Performance",
-        url: "https://www.adryvo.in/blog/why-standard-seo-isnt-enough-full-funnel-performance-marketing-andheri",
-        domain: "adryvo.in",
-        snippet: `owaiskhan@adryvo.in +91 9819708112 · Full-Funnel Performance blog article mentioning your phone number and email.`,
-        contactEmail: "owaiskhan@adryvo.in",
-      },
-      {
-        title: "okprofile.online: Digital Mechanics & B2B Web Engineering Blog",
-        url: "https://www.okprofile.online/blog/digital-mechanics",
-        domain: "okprofile.online",
-        snippet: `Public blog post on okprofile.online indexing phone number 9819708112.`,
-        contactEmail: "contact@okprofile.online",
-      }
-    );
-  }
-
-  // 2. Email Scan Live Website & Sitemap Discovery
   if (mode === "email" && lowerTarget.includes("@")) {
     const emailDomain = lowerTarget.split("@")[1]?.trim() || "";
     const candidateDomains = new Set<string>();
@@ -547,21 +518,9 @@ async function scanLiveWebMentions(
       candidateDomains.add(emailDomain);
     }
 
-    // Also check known domains where stalitemedia@gmail.com / owaiskhan@adryvo.in / Owais@stalite.in appear
-    if (
-      lowerTarget === "stalitemedia@gmail.com" ||
-      lowerTarget === "owais@stalite.in" ||
-      lowerTarget === "shaad@stalite.in"
-    ) {
-      candidateDomains.add("stalite.in");
-    }
-    if (lowerTarget === "owaiskhan@adryvo.in") {
-      candidateDomains.add("adryvo.in");
-    }
-
     for (const domain of candidateDomains) {
       const scrapedEmails = await scrapeEmailsFromWebsite(domain);
-      const bestContact = scrapedEmails[0] || targetValue;
+      const bestContact = scrapedEmails[0] || "";
       const expandedPages = await expandDomainPagesWithEmailOrPhone(
         domain,
         targetValue,
@@ -625,7 +584,18 @@ export async function POST(request: Request) {
   };
 
   const apiKey = resolveGeminiApiKey();
+  if (!apiKey) {
+    return NextResponse.json(
+      {
+        error:
+          "The scan engine is not configured, so nothing was checked. Nothing was saved.",
+      },
+      { status: 503 }
+    );
+  }
+
   const allMentions: GroundedMention[] = [];
+  let searchError: string | null = null;
 
   // 1. Run live Google Search Grounding via Gemini
   if (apiKey) {
@@ -651,7 +621,7 @@ CRITICAL INSTRUCTIONS:
 4. Return a JSON array inside a \`\`\`json code block where each item has:
    - "title": Exact page title from Google Search
    - "url": Full URL of the page from Google Search
-   - "domain": Website domain (e.g. "stalite.in", "adryvo.in", "okprofile.online")
+   - "domain": Website domain (e.g. "example.com")
    - "snippet": The exact snippet or context showing the phone number on that page
    - "contactEmail": Any email address visible in the Google Search snippet or on that site`
           : `Use Google Search to search for the exact email address: "${targetValue}" and ${targetValue}${
@@ -667,7 +637,7 @@ CRITICAL INSTRUCTIONS:
 4. Return a JSON array inside a \`\`\`json code block where each item has:
    - "title": Exact page title from Google Search
    - "url": Full URL of the page from Google Search
-   - "domain": Website domain (e.g. "stalite.in", "adryvo.in")
+   - "domain": Website domain (e.g. "example.com")
    - "snippet": The exact snippet or context showing how "${targetValue}" appears on that page
    - "contactEmail": The contact, owner, or privacy email address for that website`;
 
@@ -675,7 +645,9 @@ CRITICAL INSTRUCTIONS:
       const grounded = await extractGroundedMentions(response, targetValue);
       allMentions.push(...grounded);
     } catch (err) {
-      console.warn("Live Google Search Grounding error:", err);
+      searchError =
+        err instanceof Error ? err.message : "The grounded search did not finish.";
+      console.error("Live Google Search grounding failed:", err);
     }
   }
 
@@ -693,6 +665,16 @@ CRITICAL INSTRUCTIONS:
   }
 
   // 3. Scrape live contact emails from each discovered website in parallel
+  if (searchError && allMentions.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "The web search did not finish, so nothing was checked. Please try again in a moment.",
+      },
+      { status: 502 }
+    );
+  }
+
   const uniqueDomains = Array.from(
     new Set(
       allMentions
@@ -781,8 +763,14 @@ CRITICAL INSTRUCTIONS:
         mode === "phone"
           ? `Finds every webpage mentioning ${targetValue}`
           : `Finds every webpage showing ${targetValue}`,
-      status: "completed",
-      summary: `Found ${findings.length} web pages showing ${targetValue} with contact emails resolved.`,
+      status: searchError ? "error" : "completed",
+      summary: searchError
+        ? `The web search did not finish. Pages listed here come from the site crawl only, so treat the report as partial.`
+        : findings.length > 0
+          ? `Found ${findings.length} ${
+              findings.length === 1 ? "page" : "pages"
+            } publishing ${targetValue}, with contact emails resolved.`
+          : `Searched the open web and found no page publishing ${targetValue}.`,
       queriesRun: [targetValue],
       sources,
       findingsCount: findings.length,
@@ -796,6 +784,7 @@ CRITICAL INSTRUCTIONS:
     findings,
     reports,
     breaches,
-    checked: Math.max(findings.length, 1),
+    checked: findings.length,
+    ...(searchError ? { warning: searchError } : {}),
   });
 }

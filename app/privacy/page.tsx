@@ -17,14 +17,14 @@ const SECTIONS = [
   {
     title: "Overview & Scope",
     body: [
-      `This Privacy Policy explains how Untrace (${SITE_DOMAIN}) collects, processes, stores, and protects information when you run a personal data exposure scan, deploy our AI Agent Swarm, or send data-broker deletion requests.`,
-      "Untrace is designed around strict data minimization: you remain in full control of the personal details you search for and the removal notices you choose to send.",
+      `This Privacy Policy explains how Untrace (${SITE_DOMAIN}) collects, processes, stores, and protects information when you run a personal data exposure scan, review the pages it returns, or send deletion requests.`,
+      "Untrace is designed around strict data minimisation: you remain in full control of the personal details you search for and the removal notices you choose to send.",
     ],
   },
   {
     title: "Information You Provide During a Scan",
     body: [
-      "When you run a scan, you may provide your full name, city, state/region, country, email addresses, phone numbers, and public usernames. These inputs are used solely to check public people-search directories, marketing data brokers, breach archives, and live web search results via our AI reconnaissance agents.",
+      "When you run a scan, you may provide your full name, city, state/region, country, email addresses, phone numbers, and public usernames. These inputs are used solely to run a live open-web search for pages that publish them, to open those pages and confirm the details appear there, and to resolve the contact address of the site that owns each page.",
       "If you use Untrace without signing in, your scan report and drafted requests are stored locally in your browser's localStorage (under untrace.state.v1) and can be cleared at any time with a single click.",
     ],
   },
@@ -38,15 +38,15 @@ const SECTIONS = [
   {
     title: "Google Workspace & Gmail API Limited Use Disclosure",
     body: [
-      "Untrace optionally integrates with the Gmail API (scope: https://www.googleapis.com/auth/gmail.send) solely to allow you to send formal personal data deletion and opt-out emails (under GDPR, CCPA, DPDP, and similar privacy statutes) directly from your own email address to data brokers' privacy officers.",
+      "Untrace optionally integrates with the Gmail API (scope: https://www.googleapis.com/auth/gmail.send) solely to allow you to send formal personal data deletion and opt-out emails (under GDPR, CCPA, DPDP, and similar privacy statutes) directly from your own email address to the company that publishes the listing.",
       "Untrace never reads your inbox, never accesses your existing emails or contacts, and never sends an email without your explicit confirmation on each message. OAuth access tokens for Gmail are held strictly in volatile browser memory during your active session and are never persisted to a database or shared with third parties.",
       "Untrace's use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy, including the Limited Use requirements.",
     ],
   },
   {
-    title: "AI Agent Swarm & Third-Party Sites",
+    title: "Open-web search & third-party sites",
     body: [
-      "When you run the AI Agent Swarm, our server-side reconnaissance endpoint queries Google Search to locate publicly indexed profiles and official Data Protection Officer (DPO) contact emails matching the profile you entered. We do not sell, rent, or monetize your personal information or search queries.",
+      "When you run a scan, our server-side endpoint queries Google Search for publicly indexed pages that publish the number or address you entered, opens those pages to confirm the details appear, and reads the contact address the site publishes. We do not sell, rent or monetise your personal information or search queries.",
       "When you click an external opt-out portal link or dispatch a removal email to a third-party data broker, that company receives your deletion request directly under their respective privacy policy and statutory obligations.",
     ],
   },

@@ -83,7 +83,7 @@ export function SwarmPanel({
       return;
     }
     if (modeToRun === "email" && !/\S+@\S+\.\S+/.test(cleanEmail)) {
-      setError("Please enter a valid email address (e.g. owaiskhan@adryvo.in).");
+      setError("Please enter a valid email address (e.g. you@example.com).");
       return;
     }
 
@@ -255,7 +255,7 @@ export function SwarmPanel({
                     type="email"
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
-                    placeholder="Enter email address (e.g. owaiskhan@adryvo.in)"
+                    placeholder="Enter email address (e.g. you@example.com)"
                     className="field bg-surface pl-10 font-mono text-sm"
                     disabled={running}
                   />

@@ -23,8 +23,8 @@ const SECTIONS = [
   {
     title: "Authorized Use & Identity Representation",
     body: [
-      "You may only use Untrace to scan for and request the removal of personal data belonging to yourself, or for individuals who have granted you explicit written authority to act as their authorized agent.",
-      "You agree not to use Untrace, its directory index, or its AI Agent Swarm for stalking, harassment, doxxing, unauthorized background screening, or any unlawful purpose.",
+      "You may only use Untrace to scan for and request the removal of personal data belonging to yourself, or for individuals who have granted you explicit written authority to act as their authorised agent.",
+      "You agree not to use Untrace, its scan results, or the requests it drafts for stalking, harassment, doxxing, unauthorised background screening, or any unlawful purpose.",
     ],
   },
   {
@@ -38,7 +38,7 @@ const SECTIONS = [
     title: "No Legal Advice & Third-Party Compliance",
     body: [
       "Untrace is a software utility and privacy automation tool, not a law firm, and does not provide legal advice or legal representation.",
-      "While Untrace identifies public listings and resolves Data Protection Officer (DPO) contact details, third-party data brokers are independent entities. We cannot guarantee that every third-party organization will comply with a deletion request or remove records within statutory deadlines.",
+      "While Untrace finds pages that publish your details and the contact address each site lists, the companies behind those pages are independent entities. We cannot guarantee that every one of them will comply with a deletion request or remove records within statutory deadlines.",
     ],
   },
   {
@@ -83,7 +83,7 @@ export default function TermsPage() {
               <div className="mt-8 space-y-3">
                 <p className="flex items-center gap-2 text-xs text-muted">
                   <ShieldCheck className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
-                  For your own records or authorized clients only
+                  For your own records or authorised clients only
                 </p>
                 <p className="flex items-center gap-2 text-xs text-muted">
                   <FileCheck2 className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
