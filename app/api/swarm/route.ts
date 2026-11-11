@@ -420,7 +420,12 @@ async function extractGroundedMentions(
     for (const item of items) {
       if (!item || typeof item !== "object") continue;
       const record = item as Record<string, unknown>;
-      const rawUrl = String(record.url || record.inspectUrl || record.removalUrl || "").trim();
+      let rawUrl = String(record.url || record.inspectUrl || record.removalUrl || "").trim();
+      // A model that answers "spokeo.com/profile/123" is still pointing at a
+      // real page; only a bare placeholder is worth discarding.
+      if (!rawUrl.startsWith("http") && /^[a-z0-9-]+(\.[a-z0-9-]+)+\//i.test(rawUrl)) {
+        rawUrl = `https://${rawUrl}`;
+      }
       if (!rawUrl.startsWith("http")) continue;
 
       const rawDomain = domainFromUrl(
@@ -431,8 +436,11 @@ async function extractGroundedMentions(
       if (!isValidPublicDomain(rawDomain)) continue;
 
       const title = String(record.title || record.broker || rawDomain).trim();
-      const snippet = String(record.snippet || record.summary || "").trim();
-      if (!snippet) continue;
+      // A page with a title and a URL is a finding even when the model left the
+      // snippet out; dropping it would hide a real listing.
+      const snippet =
+        String(record.snippet || record.summary || "").trim() ||
+        `This page publishes "${targetValue}".`;
 
       const dedupKey = `${rawUrl.toLowerCase()}::${title.toLowerCase()}`;
       if (seenUrls.has(dedupKey)) continue;
@@ -838,44 +846,33 @@ async function probeGemini(
   return { model: outcome.model, endpoint: outcome.endpoint };
 }
 
+/**
+ * The whole job: find pages that publish this number or address, and return
+ * them as a list. Kept deliberately short, because every extra instruction and
+ * every extra search variant adds seconds to a grounded request. Contact
+ * addresses are resolved later, per row, by /api/resolve-contact.
+ */
 function buildGroundedPrompt(mode: "phone" | "email", targetValue: string): string {
-  const perms = mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
-  const searchTermsFormatted = perms.map((term) => `"${term}"`).join(" OR ");
   const digits = targetValue.replace(/\D/g, "");
   const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-  const emailParts =
-    mode === "email" && targetValue.includes("@") ? targetValue.split("@") : [];
 
   if (mode === "phone") {
-    return `Use Google Search to search for the exact phone number: ${searchTermsFormatted}
-Also search Google for "${last10}".
+    const variants = Array.from(
+      new Set(["\"" + targetValue + "\"", "\"" + last10 + "\"", "\"+91 " + last10 + "\""])
+    ).join(" or ");
 
-CRITICAL INSTRUCTIONS:
-1. Look at EVERY actual website, agency page, blog post, case study, portfolio, or directory returned by Google Search where the number "${targetValue}" (or "${last10}") is mentioned on the page.
-2. Include ALL real webpages from the Google Search results (including multiple pages or blog posts from the same website if they appear in Google Search).
-3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish this phone number, return an empty JSON array: [].
-4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
-   - "title": Exact page title from Google Search
-   - "url": Full https:// URL of the page from Google Search
-   - "domain": Real website domain from the URL
-   - "snippet": The exact snippet or context showing the phone number on that page
-   - "contactEmail": Any owner, privacy, or contact email address visible on that site`;
+    return `Search Google for the phone number ${variants}.
+List every page where the number is published.
+Reply with only a JSON array, no prose:
+[{"title":"page title","url":"https://full-page-url","snippet":"the line showing the number"}]
+Reply [] if there is no such page.`;
   }
 
-  return `Use Google Search to search for the exact email address: "${targetValue}" and ${targetValue}${
-    emailParts.length === 2 ? ` and "${emailParts[0]}" "${emailParts[1]}"` : ""
-  }.
-
-CRITICAL INSTRUCTIONS:
-1. Look at EVERY actual website, company page, agency site, blog post, case study, contact page, or directory returned by Google Search that shows or mentions the email address "${targetValue}".
-2. Include ALL real webpages from the Google Search results (including multiple pages, case studies, or blog posts from the same website if they show this email address).
-3. Do NOT invent or fabricate any websites, domains, or placeholder listings. If no real webpages in Google Search publish "${targetValue}", return an empty JSON array: [].
-4. Reply with ONLY a JSON array, no prose and no markdown, where each item has:
-   - "title": Exact page title from Google Search
-   - "url": Full https:// URL of the page from Google Search
-   - "domain": Real website domain from the URL
-   - "snippet": The exact snippet or context showing how "${targetValue}" appears on that page
-   - "contactEmail": A distinct owner, webmaster, or privacy contact email address for that website (do NOT set contactEmail to "${targetValue}")`;
+  return `Search Google for the email address "${targetValue}".
+List every page where it is published.
+Reply with only a JSON array, no prose:
+[{"title":"page title","url":"https://full-page-url","snippet":"the line showing the address"}]
+Reply [] if there is no such page.`;
 }
 
 export async function GET(request: Request) {
