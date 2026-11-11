@@ -59,7 +59,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Untrace: 45 sites sell your address to anyone who asks, we write the deletion request for all 45",
+        alt: "Untrace: hundreds of sites sell your personal data to anyone who asks, and we write the deletion request for each owner",
       },
     ],
   },

@@ -363,42 +363,42 @@ async function scanLiveWebMentions(
   if (mode === "phone" && last10 === "9819708112") {
     const livePages = [
       {
-        title: "Stalite Media — Best Performance Marketing Agency in Mumbai",
+        title: "Stalite Media: Best Performance Marketing Agency in Mumbai",
         url: "https://www.stalite.in/performance-marketing",
         domain: "stalite.in",
         snippet: `stalitemedia@gmail.com +91 9653614716 +91 9819708112 · MENU · HOME · SMM · PERFORMANCE (ADS) · WEB/APP DEV · OUR TEAM`,
         contactEmail: "stalitemedia@gmail.com",
       },
       {
-        title: "Stalite Media — Top Web Development Company in Mumbai",
+        title: "Stalite Media: Top Web Development Company in Mumbai",
         url: "https://www.stalite.in/web-development",
         domain: "stalite.in",
         snippet: `stalitemedia@gmail.com +91 9653614716 +91 9819708112 · Custom Website & Web Development Company in Mumbai`,
         contactEmail: "Owais@stalite.in",
       },
       {
-        title: "adryvo.in — Ezzi Arts & Frames | Custom B2B / B2C Visualizer App Case Study",
+        title: "adryvo.in: Ezzi Arts & Frames | Custom B2B / B2C Visualizer App Case Study",
         url: "https://www.adryvo.in/case-studies",
         domain: "adryvo.in",
         snippet: `Published case study page on adryvo.in indexing phone number +91 9819708112 and contact footer.`,
         contactEmail: "owaiskhan@adryvo.in",
       },
       {
-        title: "adryvo.in — Programmatic Advertising and Performance Marketing for Andheri",
+        title: "adryvo.in: Programmatic Advertising and Performance Marketing for Andheri",
         url: "https://www.adryvo.in/blog/programmatic-advertising-and-performance-marketing",
         domain: "adryvo.in",
         snippet: `owaiskhan@adryvo.in +91 9819708112 · Privacy Policy · Terms of Service · Blog article footer mention.`,
         contactEmail: "owaiskhan@adryvo.in",
       },
       {
-        title: "adryvo.in — Why Standard SEO Isn't Enough: Full-Funnel Performance",
+        title: "adryvo.in: Why Standard SEO Isn't Enough: Full-Funnel Performance",
         url: "https://www.adryvo.in/blog/why-standard-seo-isnt-enough",
         domain: "adryvo.in",
         snippet: `owaiskhan@adryvo.in +91 9819708112 · Full-Funnel Performance blog article mentioning your phone number and email.`,
         contactEmail: "owaiskhan@adryvo.in",
       },
       {
-        title: "okprofile.online — Digital Mechanics & B2B Web Engineering Blog",
+        title: "okprofile.online: Digital Mechanics & B2B Web Engineering Blog",
         url: "https://www.okprofile.online/blog/digital-mechanics",
         domain: "okprofile.online",
         snippet: `Public blog post on okprofile.online indexing phone number 9819708112.`,
@@ -423,7 +423,7 @@ async function scanLiveWebMentions(
     if (emailDomain && !freeProviders.has(emailDomain)) {
       const scrapedEmails = await scrapeEmailsFromWebsite(emailDomain);
       mentions.push({
-        title: `${emailDomain} — Direct Website Email Publication`,
+        title: `${emailDomain}: Direct Website Email Publication`,
         url: `https://www.${emailDomain}`,
         domain: emailDomain,
         snippet: `Email address "${targetValue}" is directly published on ${emailDomain} pages indexed by Google.`,
@@ -505,7 +505,7 @@ Also search Google for "${targetValue.replace(/\D/g, "").slice(-10)}".
 CRITICAL INSTRUCTIONS:
 1. Look at EVERY actual website, agency page, blog post, case study, portfolio, or directory returned by Google Search where the number "${targetValue}" (or "${targetValue.replace(/\D/g, "").slice(-10)}") is mentioned on the page.
 2. Include ALL real webpages from the Google Search results (including multiple pages or blog posts from the same website if they appear in Google Search, such as agency pages, case studies, blog posts, or contact footers).
-3. Do NOT invent generic data brokers if they are not in the Google Search results—prioritize the exact websites and pages where this phone number is actually posted on Google!
+3. Do NOT invent generic data brokers if they are not in the Google Search results. Prioritize the exact websites and pages where this phone number is actually posted on Google!
 4. Return a JSON array inside a \`\`\`json code block where each item has:
    - "title": Exact page title from Google Search
    - "url": Full URL of the page from Google Search

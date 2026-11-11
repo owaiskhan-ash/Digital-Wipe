@@ -367,7 +367,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               />
               <p className="mt-2.5 text-xs leading-relaxed text-muted">
                 Searches Google for every website, agency page, blog post, case study, and
-                caller-ID directory where this exact number is posted—and scrapes the contact
+                caller-ID directory where this exact number is posted, and scrapes the contact
                 email from each site so you can demand removal.
               </p>
             </div>
@@ -390,7 +390,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               />
               <p className="mt-2.5 text-xs leading-relaxed text-muted">
                 Searches Google for every webpage, blog footer, directory, and B2B contact
-                list where this exact email address is published—and builds a dedicated Email
+                list where this exact email address is published, and builds a dedicated Email
                 Removal List.
               </p>
             </div>
@@ -398,7 +398,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
           <div>
             <label className="label" htmlFor="fullName">
-              Your Name (optional — only used to sign the removal email)
+              Your Name (optional, only used to sign the removal email)
             </label>
             <input
               id="fullName"

@@ -35,7 +35,7 @@ export function setCachedAccessToken(token: string | null) {
   cachedAccessToken = token;
 }
 
-// Basic provider for 1-click website login (only openid, email, profile — avoids 403 on initial login)
+// Basic provider for 1-click website login (only openid, email, profile, avoids 403 on initial login)
 export const basicGoogleProvider = new GoogleAuthProvider();
 basicGoogleProvider.setCustomParameters({ prompt: "select_account" });
 
