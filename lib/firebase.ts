@@ -17,6 +17,7 @@ import firebaseConfig from "@/firebase-applet-config.json";
 // Initialize Firebase App singleton
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
+export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
 const firestoreDatabaseId = (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId;
 export const db: Firestore = firestoreDatabaseId
   ? getFirestore(app, firestoreDatabaseId)

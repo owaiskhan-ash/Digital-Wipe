@@ -3,14 +3,36 @@
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { LogOut, Cloud, ShieldCheck, User as UserIcon, AlertCircle, X } from "lucide-react";
+import {
+  LogOut,
+  Cloud,
+  ShieldCheck,
+  User as UserIcon,
+  AlertCircle,
+  X,
+  Copy,
+  Check,
+  ExternalLink,
+} from "lucide-react";
 import { useStore } from "@/lib/store";
+import { FIREBASE_PROJECT_ID } from "@/lib/firebase";
+import { copyText } from "@/lib/utils";
 
 export function AuthButton() {
   const { user, authLoading, signIn, signOut, authError, clearAuthError, isSyncing } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const currentHostname =
+    typeof window !== "undefined" ? window.location.hostname : "untrace.justsimpleapps.online";
+  const isUnauthorizedDomain = Boolean(
+    authError && authError.toLowerCase().includes("unauthorized-domain")
+  );
+  const domainsToAuthorize = Array.from(
+    new Set([currentHostname, "untrace.justsimpleapps.online"].filter(Boolean))
+  );
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -32,6 +54,14 @@ export function AuthButton() {
     }
   };
 
+  const handleCopyDomain = async (domain: string) => {
+    const ok = await copyText(domain);
+    if (ok) {
+      setCopiedDomain(domain);
+      window.setTimeout(() => setCopiedDomain(null), 2000);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="h-9 w-24 animate-pulse rounded-full bg-mist" aria-hidden="true" />
@@ -40,11 +70,11 @@ export function AuthButton() {
 
   return (
     <div className="relative inline-flex items-center" ref={menuRef}>
-      {/* Auth error notification */}
-      {authError && (
+      {/* Auth error notification / Unauthorized Domain Fix Assistant */}
+      {authError && !isUnauthorizedDomain && (
         <div className="absolute right-0 top-12 z-50 flex items-center gap-2 rounded-xl border border-clay/30 bg-clay-soft px-3 py-2 text-xs text-clay shadow-md">
           <AlertCircle className="size-4 shrink-0" />
-          <span className="max-w-[200px] truncate">{authError}</span>
+          <span className="max-w-[240px] truncate">{authError}</span>
           <button
             onClick={clearAuthError}
             className="ml-1 rounded p-0.5 hover:bg-clay/10"
@@ -52,6 +82,113 @@ export function AuthButton() {
           >
             <X className="size-3" />
           </button>
+        </div>
+      )}
+
+      {authError && isUnauthorizedDomain && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-ink/40 backdrop-blur-sm"
+            onClick={clearAuthError}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auth-domain-modal-title"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl animate-fade-in"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-amber-soft text-amber">
+                  <AlertCircle className="size-5" />
+                </span>
+                <div>
+                  <h3 id="auth-domain-modal-title" className="text-base font-medium text-ink">
+                    Authorize this domain in Firebase
+                  </h3>
+                  <p className="text-xs text-muted">
+                    Error: <code className="font-mono text-clay">auth/unauthorized-domain</code>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearAuthError}
+                className="rounded-lg p-1 text-muted hover:bg-mist hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <p className="mt-3.5 text-xs leading-relaxed text-ink-soft">
+              Firebase blocks Google sign-in popups from domains that aren&apos;t on your project&apos;s{" "}
+              <strong className="font-medium text-ink">Authorized domains</strong> allowlist. Add the
+              domain(s) below in your Firebase Console:
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {domainsToAuthorize.map((domain) => (
+                <div
+                  key={domain}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-line bg-mist/60 px-3 py-2"
+                >
+                  <code className="truncate font-mono text-xs text-ink">{domain}</code>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyDomain(domain)}
+                    className="btn btn-secondary btn-sm py-1 px-2.5 text-xs shrink-0"
+                  >
+                    {copiedDomain === domain ? (
+                      <>
+                        <Check className="size-3.5 text-moss" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="size-3.5" />
+                        Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <ol className="mt-4 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-muted">
+              <li>
+                Open{" "}
+                <strong className="font-medium text-ink">
+                  Firebase Console &rarr; Authentication &rarr; Settings &rarr; Authorized domains
+                </strong>
+                .
+              </li>
+              <li>
+                Click <strong className="font-medium text-ink">Add domain</strong> and paste the
+                copied domain above.
+              </li>
+              <li>Come back here and click Sign in again.</li>
+            </ol>
+
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">
+              <button
+                type="button"
+                onClick={clearAuthError}
+                className="btn btn-quiet btn-sm text-xs"
+              >
+                Close
+              </button>
+              <a
+                href={`https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/settings`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary btn-sm text-xs"
+              >
+                Open Firebase Auth Settings
+                <ExternalLink className="size-3.5" />
+              </a>
+            </div>
+          </div>
         </div>
       )}
 
