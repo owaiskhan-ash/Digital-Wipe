@@ -187,7 +187,7 @@ export function DashboardView() {
     saveScan({
       ...scan,
       profile: updatedProfile,
-      checked: scan.checked + newFindings.length * 3,
+      checked: scan.checked + newFindings.length,
       findings: updatedFindings,
       swarmReports: reports,
     });

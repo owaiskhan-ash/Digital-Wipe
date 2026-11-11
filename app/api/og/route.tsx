@@ -131,7 +131,7 @@ export async function GET(request: Request) {
               <div style={{ fontSize: 23, fontWeight: 500, color: INK_SOFT }}>{SITE_DOMAIN}</div>
             </div>
             <div style={{ fontSize: 21, color: MUTED }}>
-              4 AI agents. One deletion request each.
+              One open-web search. One deletion request each.
             </div>
           </div>
         </div>

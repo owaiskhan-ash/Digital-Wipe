@@ -11,8 +11,8 @@ export function BreachesPanel({ breaches }: { breaches: BreachExposure[] }) {
     return (
       <EmptyState
         icon={KeyRound}
-        title="No breach records checked"
-        description="Add an email address to your scan and Untrace can check whether your credentials appear in known breach archives."
+        title="Breach checks are not part of a scan yet"
+        description="A scan looks for pages that publish your number or address. Breach archive lookups are not connected yet, so nothing is listed here."
       />
     );
   }

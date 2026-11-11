@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 const PHONE_STAGES = [
   {
-    label: "Step 01 ·Searching Google for Exact Phone Number",
+    label: "Step 01 · Searching Google for Exact Phone Number",
     detail: "Checking plain 10-digit, +91 / international, and spaced formats across the web",
   },
   {
@@ -84,7 +84,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!agreed) {
-      setError("Please confirm you are authorized to request removal of this number or email.");
+      setError("Please confirm you are authorised to request removal of this number or email.");
       return;
     }
 
@@ -166,7 +166,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         id: `scan_${Date.now().toString(36)}`,
         createdAt: new Date().toISOString(),
         profile: mergedProfile,
-        checked: (existingScan?.checked ?? 0) + (payload.checked ?? incomingFindings.length * 3),
+        checked: (existingScan?.checked ?? 0) + (payload.checked ?? incomingFindings.length),
         findings: mergedFindings,
         breaches: payload.breaches ?? [],
         swarmReports: incomingReports,
@@ -419,7 +419,8 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
             />
             <span className="text-xs leading-relaxed text-ink-soft">
               I confirm this {scanMode === "phone" ? "phone number" : "email address"} belongs
-              to me (or my authorized client) to request removal.
+              to me, or to a client who authorised me to act for them, and that I
+              may request its removal.
             </span>
           </label>
 

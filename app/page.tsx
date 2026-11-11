@@ -78,7 +78,7 @@ const STEPS = [
   {
     icon: Layers,
     title: "Search the open web",
-    body: "A grounded AI search reads the pages that mention your identifier, then we add the curated brokers, caller-ID apps and B2B indexes.",
+    body: "A grounded AI search reads the pages that mention your identifier: directories, contact footers, case studies, agency sites and blogs. Each page is opened to confirm it publishes your details, and the contact address is pulled from the site.",
   },
   {
     icon: Mail,
@@ -172,7 +172,7 @@ const QUESTIONS = [
   },
   {
     q: "What if a company ignores the request?",
-    a: "Send the follow-up first. It restates the demand and the statutory deadline. If that is ignored too, the letter names the regulator you can complain to and you can ask search engines to de-index the page. Both routes are one click from your report.",
+    a: "Send the follow-up first. It restates the demand and the statutory deadline. If the deadline passes with no answer, the request already names the regulator for your country, so escalating is a letter you have the address for rather than a search you have to start.",
   },
   {
     q: "Do I need an account?",
@@ -418,14 +418,15 @@ export default function HomePage() {
           <div className="container-page">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div className="max-w-2xl">
-                <SectionLabel>What we find</SectionLabel>
+                <SectionLabel>The landscape</SectionLabel>
                 <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
                   Six kinds of footprint. Different owners, different rules.
                 </h2>
               </div>
               <p className="max-w-xs text-sm leading-relaxed text-muted">
                 Each category needs a different request, a different legal route
-                and a different amount of patience.
+                and a different amount of patience. The scan finds the pages that
+                publish you, then writes to whoever owns each page.
               </p>
             </div>
 
