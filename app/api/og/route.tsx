@@ -31,28 +31,21 @@ async function loadFont(file: string, origin: string): Promise<ArrayBuffer> {
   return await response.arrayBuffer();
 }
 
-function TraceMark() {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 46 }}>
-      <div style={{ width: 16, height: 16, borderRadius: 4, backgroundColor: MOSS }} />
-      <div style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: GREY }} />
-      <div style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: SAND, border: `1px solid ${GREY}` }} />
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginLeft: 2, paddingBottom: 2 }}>
-        <div style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: MOSS }} />
-        <div style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: GREY }} />
-        <div style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: SAND }} />
-      </div>
-    </div>
+async function loadMark(): Promise<string> {
+  const buffer = await readFile(
+    path.join(process.cwd(), "public", "brand", "logo.png"),
   );
+  return `data:image/png;base64,${buffer.toString("base64")}`;
 }
 
 export async function GET(request: Request) {
   const origin = new URL(request.url).origin;
 
-  const [serif, sans, sansMedium] = await Promise.all([
+  const [serif, sans, sansMedium, mark] = await Promise.all([
     loadFont("instrument-serif-400.woff", origin),
     loadFont("inter-400.woff", origin),
     loadFont("inter-500.woff", origin),
+    loadMark(),
   ]);
 
   return new ImageResponse(
@@ -99,26 +92,13 @@ export async function GET(request: Request) {
         >
           {/* Brand */}
           <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 66,
-                height: 66,
-                borderRadius: 20,
-                backgroundColor: "#EAF0EB",
-                border: `1px solid ${LINE}`,
-              }}
-            >
-              <TraceMark />
-            </div>
+            <img src={mark} width={66} height={66} alt="" />
             <div style={{ display: "flex", flexDirection: "column" }}>
               <div style={{ fontFamily: "Instrument Serif", fontSize: 42, lineHeight: 1, color: INK }}>
                 untrace
               </div>
-              <div style={{ fontSize: 17, letterSpacing: "0.14em", textTransform: "uppercase", color: MUTED, marginTop: 6 }}>
-                Personal data removal
+              <div style={{ fontSize: 16, letterSpacing: "0.16em", textTransform: "uppercase", color: MUTED, marginTop: 7 }}>
+                AI-POWERED PERSONAL DATA REMOVAL
               </div>
             </div>
           </div>
@@ -126,13 +106,13 @@ export async function GET(request: Request) {
           {/* Headline */}
           <div style={{ display: "flex", flexDirection: "column", maxWidth: 1000 }}>
             <div style={{ fontFamily: "Instrument Serif", fontSize: 76, lineHeight: 1.05, letterSpacing: "-0.02em", color: INK }}>
-              45 sites sell your address
+              Hundreds of sites sell
             </div>
             <div style={{ fontFamily: "Instrument Serif", fontSize: 76, lineHeight: 1.05, letterSpacing: "-0.02em", color: INK }}>
-              to anyone who asks.
+              your personal data
             </div>
             <div style={{ fontFamily: "Instrument Serif", fontSize: 76, lineHeight: 1.05, letterSpacing: "-0.02em", color: MUTED }}>
-              We write to all 45.
+              to anyone who asks.
             </div>
           </div>
 
@@ -151,7 +131,7 @@ export async function GET(request: Request) {
               <div style={{ fontSize: 23, fontWeight: 500, color: INK_SOFT }}>{SITE_DOMAIN}</div>
             </div>
             <div style={{ fontSize: 21, color: MUTED }}>
-              No account. Nothing sent without you.
+              4 AI agents. One deletion request each.
             </div>
           </div>
         </div>

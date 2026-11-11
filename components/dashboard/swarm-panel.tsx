@@ -203,8 +203,8 @@ export function SwarmPanel({
               </h2>
               <p className="mt-1 text-xs text-ink-soft">
                 {activeMode === "phone"
-                  ? "Finds agency sites, blogs, case studies, contact footers, and directories where your exact phone number is posted—and extracts each site's email for removal."
-                  : "Finds websites, blogs, directories, and B2B lists where your exact email address is published—and extracts each site's contact email for removal."}
+                  ? "Finds agency sites, blogs, case studies, contact footers, and directories where your exact phone number is posted, and extracts each site's email for removal."
+                  : "Finds websites, blogs, directories, and B2B lists where your exact email address is published, and extracts each site's contact email for removal."}
               </p>
             </div>
 

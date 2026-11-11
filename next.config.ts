@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
   },
   // The social card route renders with the self-hosted woff files.
   outputFileTracingIncludes: {
-    "/api/og": ["./public/fonts/**"],
+    "/api/og": ["./public/fonts/**", "./public/brand/logo.png"],
   },
 };
 

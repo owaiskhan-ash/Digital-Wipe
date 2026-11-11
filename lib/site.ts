@@ -4,10 +4,11 @@ export const SITE_DOMAIN = "untrace.justsimpleapps.online";
 
 export const SOURCE_URL = "https://github.com/owaiskhan-ash/Digital-Wipe";
 
-export const SITE_TITLE = "45 sites sell your address. Untrace deletes you from all 45.";
+export const SITE_TITLE =
+  "Hundreds of sites sell your personal data. Untrace deletes you from them.";
 
 export const SITE_DESCRIPTION =
-  "Data brokers and people-search sites sell your name, address and phone number to anyone who asks. Untrace finds every listing and writes the deletion request that removes you from all 45.";
+  "Hundreds of sites publish your name, address and phone number. Untrace searches the open web with four AI agents, then writes the deletion request that removes you from each one.";
 
 export const SITE_TAGLINE =
-  "45 sites sell your address to anyone who asks. We write to all 45.";
+  "Hundreds of sites sell your personal data to anyone who asks. We write to each owner.";

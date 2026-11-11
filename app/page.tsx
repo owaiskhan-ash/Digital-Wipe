@@ -70,7 +70,7 @@ const STEPS = [
   {
     icon: Layers,
     title: "Deploy the 4-Agent AI Swarm",
-    body: "Four specialized AI agents search across the entire internet via Google Search to find directories, B2B brokers, and public records—plus each site's DPO email.",
+    body: "Four specialized AI agents search across the entire internet via Google Search to find directories, B2B brokers, and public records, plus each site's DPO email.",
   },
   {
     icon: Send,
@@ -104,7 +104,7 @@ const QUESTIONS = [
   },
   {
     q: "How does the AI Agent Swarm find exposures?",
-    a: "When you start a scan, four specialized Gemini AI agents run live Google Search reconnaissance across the entire internet—checking global and regional people-search directories, caller-ID apps, B2B lead databases, social archives, and Data Protection Officer (DPO) registries.",
+    a: "When you start a scan, four specialized Gemini AI agents run live Google Search reconnaissance across the entire internet, checking global and regional people-search directories, caller-ID apps, B2B lead databases, social archives, and Data Protection Officer (DPO) registries.",
   },
   {
     q: "Does Untrace send emails automatically without my review?",
@@ -211,7 +211,7 @@ export default function HomePage() {
               <p className="mt-7 max-w-xl text-[1.0625rem] leading-[1.7] text-ink-soft">
                 Untrace deploys a 4-agent AI reconnaissance swarm across the open
                 internet to find every directory, data broker, and archive holding
-                your details—resolving their privacy emails so you can send legal
+                your details, resolving their privacy emails so you can send legal
                 deletion requests in one click via Gmail.
               </p>
 
