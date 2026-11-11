@@ -174,7 +174,7 @@ export function RequestsPanel({
           const finding = byId.get(request.findingId) ?? fallbackFinding(request);
 
           return (
-            <article key={request.id} className="card p-5">
+            <article key={request.id} data-reveal className="card p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

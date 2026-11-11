@@ -263,8 +263,8 @@ export default function HomePage() {
       <main>
         {/* Hero */}
         <section className="relative overflow-hidden">
-          <div className="container-page grid items-center gap-14 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-24">
-            <div className="animate-fade-up">
+          <div data-reveal className="container-page grid items-center gap-14 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-24">
+            <div className="animate-fade-blur">
               <SectionLabel>AI-powered personal data removal</SectionLabel>
 
               <h1 className="mt-5 text-[2.5rem] leading-[1.04] tracking-[-0.02em] text-ink sm:text-[3rem] lg:text-[3.5rem]">
@@ -350,7 +350,7 @@ export default function HomePage() {
 
         {/* The exposure */}
         <section className="py-20 md:py-28">
-          <div className="container-page">
+          <div data-reveal className="container-page">
             <div className="max-w-2xl">
               <SectionLabel>The exposure</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
@@ -382,7 +382,7 @@ export default function HomePage() {
 
         {/* How it works */}
         <section id="how" className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28">
-          <div className="container-page">
+          <div data-reveal className="container-page">
             <div className="max-w-2xl">
               <SectionLabel>How it works</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
@@ -414,7 +414,7 @@ export default function HomePage() {
 
         {/* What we find */}
         <section id="sources" className="scroll-mt-24 py-20 md:py-28">
-          <div className="container-page">
+          <div data-reveal className="container-page">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div className="max-w-2xl">
                 <SectionLabel>The landscape</SectionLabel>
@@ -453,7 +453,7 @@ export default function HomePage() {
 
         {/* The request */}
         <section className="border-y border-line bg-surface/60 py-20 md:py-28">
-          <div className="container-page grid items-center gap-14 lg:grid-cols-[0.92fr_1.08fr]">
+          <div data-reveal className="container-page grid items-center gap-14 lg:grid-cols-[0.92fr_1.08fr]">
             <div>
               <SectionLabel>The deletion request</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
@@ -519,7 +519,7 @@ export default function HomePage() {
 
         {/* Laws */}
         <section id="laws" className="scroll-mt-24 py-20 md:py-28">
-          <div className="container-page">
+          <div data-reveal className="container-page">
             <div className="max-w-2xl">
               <SectionLabel>The legal footing</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
@@ -536,7 +536,7 @@ export default function HomePage() {
                 read by dragging it sideways, and half of it hangs off the edge. */}
             <div className="mt-10 grid gap-3 md:hidden">
               {LAWS.map((row) => (
-                <div key={row.country} className="card min-w-0 p-5">
+                <div key={row.country} data-reveal className="card min-w-0 p-5">
                   <div className="flex items-start justify-between gap-3">
                     <p className="min-w-0 text-sm font-medium text-ink">{row.country}</p>
                     <span className="shrink-0 rounded-full border border-line bg-mist px-2.5 py-1 text-[0.6875rem] font-medium text-ink-soft">
@@ -588,7 +588,7 @@ export default function HomePage() {
 
         {/* Where your data lives */}
         <section className="py-20 md:py-28">
-          <div className="container-page grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
+          <div data-reveal className="container-page grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
             <div>
               <SectionLabel>Your data</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.4rem]">
@@ -605,7 +605,7 @@ export default function HomePage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="card p-6">
+              <div data-reveal className="card p-6">
                 <span className="grid size-9 place-items-center rounded-lg border border-line bg-mist text-ink-soft">
                   <Lock className="size-4" strokeWidth={1.7} aria-hidden />
                 </span>
@@ -616,7 +616,7 @@ export default function HomePage() {
                 </p>
               </div>
 
-              <div className="card p-6">
+              <div data-reveal className="card p-6">
                 <span className="grid size-9 place-items-center rounded-lg border border-line bg-mist text-ink-soft">
                   <ShieldCheck className="size-4" strokeWidth={1.7} aria-hidden />
                 </span>
@@ -633,7 +633,7 @@ export default function HomePage() {
 
         {/* Questions */}
         <section id="questions" className="scroll-mt-24 border-y border-line bg-surface/60 py-20 md:py-28">
-          <div className="container-page grid gap-12 lg:grid-cols-[0.7fr_1.3fr]">
+          <div data-reveal className="container-page grid gap-12 lg:grid-cols-[0.7fr_1.3fr]">
             <div>
               <SectionLabel>Questions</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.4rem]">
