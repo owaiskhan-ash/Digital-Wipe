@@ -380,10 +380,10 @@ export function Composer({
                 <label className="label" htmlFor="contact">
                   Send to
                 </label>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex min-w-0 flex-wrap gap-2">
                   <input
                     id="contact"
-                    className="field flex-1 min-w-[15rem]"
+                    className="field min-w-0 flex-1"
                     value={entry.contact}
                     onChange={(event) => update({ contact: event.target.value })}
                     placeholder="privacy@company.com"

@@ -375,9 +375,9 @@ export function SwarmPanel({
                   key={finding.id}
                   className="card p-5 transition-colors hover:border-line-strong"
                 >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-1.5 rounded-md border border-moss/30 bg-moss-soft px-2.5 py-0.5 font-mono text-xs font-medium text-moss-deep">
                           {activeMode === "phone" ? (
                             <Phone className="size-3" />
@@ -400,7 +400,7 @@ export function SwarmPanel({
                         )}
                       </div>
 
-                      <h4 className="mt-2 text-base font-semibold text-ink">
+                      <h4 className="mt-2 min-w-0 text-base font-semibold text-ink">
                         <a
                           href={finding.inspectUrl}
                           target="_blank"
@@ -415,7 +415,7 @@ export function SwarmPanel({
                         {finding.inspectUrl}
                       </p>
 
-                      <p className="mt-2 rounded-lg border border-line bg-mist/50 px-3 py-2 text-xs leading-relaxed text-ink-soft">
+                      <p className="mt-2 min-w-0 break-words rounded-lg border border-line bg-mist/50 px-3 py-2 text-xs leading-relaxed text-ink-soft">
                         {finding.summary}
                       </p>
 
@@ -429,7 +429,7 @@ export function SwarmPanel({
                             </span>
                           </span>
                         ) : (
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <span className="inline-flex items-center gap-1.5 text-muted">
                               <Mail className="size-3.5 text-muted" />
                               Contact email not resolved yet
