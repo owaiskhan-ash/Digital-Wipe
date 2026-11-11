@@ -174,6 +174,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 profile: state.scan.profile,
                 findings: state.scan.findings,
                 breaches: state.scan.breaches,
+                ...(state.scan.swarmReports ? { swarmReports: state.scan.swarmReports } : {}),
               });
             }
           } catch (err) {
@@ -266,6 +267,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             profile: scan.profile,
             findings: scan.findings,
             breaches: scan.breaches,
+            ...(scan.swarmReports ? { swarmReports: scan.swarmReports } : {}),
           });
         } catch (err) {
           handleFirestoreError(err, OperationType.WRITE, scanPath);

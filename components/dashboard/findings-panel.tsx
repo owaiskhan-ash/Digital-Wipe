@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Bot,
   Check,
   ExternalLink,
   Mail,
@@ -272,10 +273,21 @@ function FindingRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            {finding.discoveredByAgent ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-moss/25 bg-moss-soft px-2 py-0.5 text-[0.6875rem] font-medium text-moss-deep">
+                <Bot className="size-3" aria-hidden />
+                {finding.discoveredByAgent}
+              </span>
+            ) : null}
             <h3 className="text-[1.02rem] font-medium tracking-tight text-ink">
               {finding.broker}
             </h3>
             <span className="text-xs text-muted">{finding.domain}</span>
+            {finding.contactEmail ? (
+              <span className="text-[0.6875rem] text-moss-deep">
+                · {finding.contactEmail}
+              </span>
+            ) : null}
             <div className="ml-auto flex items-center gap-1.5">
               {status ? (
                 <span

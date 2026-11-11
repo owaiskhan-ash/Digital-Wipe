@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
+  Bot,
   Check,
   ChevronDown,
   Loader2,
@@ -12,17 +13,18 @@ import {
   MailCheck,
   ScanLine,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { BROKERS } from "@/lib/brokers";
 import { useStore } from "@/lib/store";
-import type { ScanResult } from "@/lib/types";
+import type { Finding, ScanResult, SwarmAgentReport } from "@/lib/types";
 
 const STAGES = [
   { label: "Reading your profile", detail: "Name, place, contact points" },
   { label: "Querying people-search directories", detail: "20 directories" },
-  { label: "Checking marketing and ad-tech databases", detail: "17 data brokers" },
-  { label: "Scanning breach archives", detail: "Credential exposure" },
-  { label: "Scoring and sorting what we found", detail: "Risk, effort, owner" },
+  { label: "Deploying AI Agent Swarm across the web", detail: "Live Google Search + DPO email lookup" },
+  { label: "Scanning marketing & breach archives", detail: "17 data brokers & breach logs" },
+  { label: "Scoring, deduplicating & drafting removals", detail: "Risk, effort, privacy contact emails" },
 ];
 
 const COUNTRIES = [
@@ -60,6 +62,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const router = useRouter();
   const { saveScan } = useStore();
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, emails: initialEmail });
+  const [useSwarm, setUseSwarm] = useState(true);
   const [agreed, setAgreed] = useState(false);
   const [status, setStatus] = useState<"idle" | "running" | "error">("idle");
   const [error, setError] = useState("");
@@ -76,10 +79,10 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   useEffect(() => {
     if (status !== "running") return;
     const timer = window.setInterval(() => {
-      setProgress((current) => Math.min(96, current + 1 + Math.random() * 2.2));
-    }, 80);
+      setProgress((current) => Math.min(96, current + (useSwarm ? 0.65 : 1.4) + Math.random() * 1.4));
+    }, 100);
     return () => window.clearInterval(timer);
-  }, [status]);
+  }, [status, useSwarm]);
 
   useEffect(() => {
     if (status !== "running" || !resultRef.current || progress < 96) return;
@@ -119,11 +122,40 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     resultRef.current = null;
 
     try {
-      const response = await fetch("/api/scan", {
+      const scanPromise = fetch("/api/scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form),
       });
+
+      const swarmPromise = useSwarm
+        ? fetch("/api/swarm", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              profile: {
+                fullName: form.fullName.trim(),
+                city: form.city.trim(),
+                region: form.region.trim(),
+                country: form.country,
+                emails: form.emails
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+                phones: form.phones
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+                usernames: form.usernames
+                  .split(",")
+                  .map((s) => s.trim().replace(/^@/, ""))
+                  .filter(Boolean),
+              },
+            }),
+          }).catch(() => null)
+        : Promise.resolve(null);
+
+      const [response, swarmResponse] = await Promise.all([scanPromise, swarmPromise]);
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
@@ -131,9 +163,33 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       }
 
       const payload = (await response.json()) as { scan: ScanResult };
-      resultRef.current = payload.scan;
+      let finalScan: ScanResult = payload.scan;
+
+      if (swarmResponse && swarmResponse.ok) {
+        const swarmData = (await swarmResponse.json().catch(() => null)) as {
+          reports?: SwarmAgentReport[];
+          findings?: Finding[];
+        } | null;
+
+        if (swarmData) {
+          const existingDomains = new Set(
+            finalScan.findings.map((f) => f.domain.toLowerCase()),
+          );
+          const uniqueNewFindings = (swarmData.findings ?? []).filter(
+            (nf) => !existingDomains.has(nf.domain.toLowerCase()),
+          );
+          finalScan = {
+            ...finalScan,
+            checked: finalScan.checked + uniqueNewFindings.length,
+            findings: [...uniqueNewFindings, ...finalScan.findings],
+            swarmReports: swarmData.reports ?? [],
+          };
+        }
+      }
+
+      resultRef.current = finalScan;
       // Let the progress settle close to the end before finishing.
-      setProgress((current) => Math.max(current, 92));
+      setProgress((current) => Math.max(current, 96));
     } catch (cause) {
       setStatus("error");
       setError(cause instanceof Error ? cause.message : "Something interrupted the scan.");
@@ -158,10 +214,10 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
-                Scanning
+                {useSwarm ? "Directory Scan + AI Agent Swarm" : "Scanning"}
               </p>
               <h2 className="mt-2 font-display text-[1.9rem] leading-tight">
-                Looking for you, quietly.
+                {useSwarm ? "4 AI agents are searching the live web." : "Looking for you, quietly."}
               </h2>
             </div>
             <span className="font-display text-3xl tabular-nums text-moss">
@@ -229,14 +285,17 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               <span className="font-display text-[2.6rem] leading-none tabular-nums">
                 {String(Math.min(brokerIndex + 1, BROKERS.length)).padStart(2, "0")}
               </span>
-              <span className="text-sm text-muted">/ {BROKERS.length} sources</span>
+              <span className="text-sm text-muted">
+                / {BROKERS.length} brokers {useSwarm ? "+ Live Web AI Swarm" : "sources"}
+              </span>
             </div>
 
             <div className="mt-8 border-t border-line pt-5">
               <p className="flex items-start gap-2 text-xs leading-relaxed text-muted">
-                <Lock className="mt-0.5 size-3.5 shrink-0 text-moss" strokeWidth={1.7} aria-hidden />
-                Your details are used for this scan only and are never written to
-                a database. The report lives in this browser.
+                <Bot className="mt-0.5 size-3.5 shrink-0 text-moss" strokeWidth={1.7} aria-hidden />
+                {useSwarm
+                  ? "Our 4 specialized AI agents are searching Google and resolving privacy officer (DPO) emails for your removal queue."
+                  : "Matching your name against known directories and sorting what comes back by risk."}
               </p>
             </div>
           </div>
@@ -389,6 +448,24 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
             not share.
           </p>
 
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-moss/30 bg-moss-soft/60 p-4">
+            <input
+              type="checkbox"
+              checked={useSwarm}
+              onChange={(event) => setUseSwarm(event.target.checked)}
+              className="mt-0.5 size-4 shrink-0 accent-[var(--color-moss)]"
+            />
+            <span className="text-xs leading-relaxed text-ink-soft">
+              <strong className="inline-flex items-center gap-1.5 font-medium text-moss-deep">
+                <Sparkles className="size-3.5 text-moss" strokeWidth={1.8} aria-hidden />
+                Deploy AI Agent Swarm (Live Web Search)
+              </strong>
+              <span className="mt-1 block text-muted">
+                Dispatches 4 specialized AI agents across Google Search to discover public listings, B2B profiles, social caches, and official privacy officer (DPO) emails so you can send removal emails right away.
+              </span>
+            </span>
+          </label>
+
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-mist/50 p-4">
             <input
               type="checkbox"
@@ -415,10 +492,12 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
         <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-6">
           <button type="submit" className="btn btn-primary" disabled={!agreed}>
-            Run the scan
+            {useSwarm ? "Run scan + AI Agent Swarm" : "Run the scan"}
             <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </button>
-          <span className="text-xs text-muted sm:ml-auto">About 5 seconds</span>
+          <span className="text-xs text-muted sm:ml-auto">
+            {useSwarm ? "About 10–15 seconds (live web search)" : "About 5 seconds"}
+          </span>
         </div>
       </div>
 
@@ -430,19 +509,19 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           <ol className="mt-5 space-y-5">
             {[
               {
-                icon: ScanLine,
-                title: `We check ${BROKERS.length} sources`,
-                body: "People-search sites, marketing databases, ad profiles and breach archives.",
+                icon: Bot,
+                title: "AI Agent Swarm + 45 Brokers",
+                body: "4 AI agents search Google in real time alongside our 45-broker directory to find exposed profiles and privacy contacts.",
               },
               {
                 icon: ShieldCheck,
-                title: "You get a ranked report",
-                body: "Every listing with what it exposes, who owns it and how hard they are to remove.",
+                title: "You get an actionable removal list",
+                body: "Every listing comes with what it exposes, who owns it, and their resolved privacy/DPO email address.",
               },
               {
                 icon: MailCheck,
-                title: "We draft the emails",
-                body: "One deletion request per owner, citing the right law. You review before sending.",
+                title: "Send removal emails in one click",
+                body: "One deletion request per owner, citing GDPR, CCPA, or DPDP. Send directly from your connected Gmail.",
               },
             ].map((item) => (
               <li key={item.title} className="flex gap-3">
@@ -461,18 +540,12 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         <div className="rounded-2xl border border-line bg-moss-soft/60 p-6">
           <p className="flex items-center gap-2 text-xs font-medium text-moss-deep">
             <Lock className="size-3.5" strokeWidth={1.8} aria-hidden />
-            Nothing is stored
+            Private &amp; under your control
           </p>
           <p className="mt-2 text-xs leading-relaxed text-ink-soft">
-            Your details are used to run this scan and handed straight back to
-            you. There is no account, no database and no tracking.
+            Your scan results stay private to your browser or synced exclusively to your own encrypted account when signed in.
           </p>
         </div>
-
-        <p className="px-1 text-[0.6875rem] leading-relaxed text-muted">
-          This build uses a curated directory of real opt-out pages and
-          illustrative scan results. It is a working prototype, not legal advice.
-        </p>
       </aside>
     </form>
   );

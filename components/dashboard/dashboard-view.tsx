@@ -4,25 +4,30 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Bot,
   Check,
   Download,
   FileSearch,
-  Info,
   RefreshCw,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { runScan } from "@/lib/scan";
-import { CATEGORIES, DATA_LABELS } from "@/lib/types";
+import {
+  CATEGORIES,
+  DATA_LABELS,
+  type Finding,
+  type SwarmAgentReport,
+} from "@/lib/types";
 import { cn, downloadFile, formatDate, plural, toCsv } from "@/lib/utils";
 import { EmptyState, SectionLabel, StatCard } from "@/components/ui";
 import { Composer, type ComposerSeed } from "./composer";
 import { FindingsPanel } from "./findings-panel";
 import { RequestsPanel } from "./requests-panel";
 import { BreachesPanel } from "./breaches-panel";
+import { SwarmPanel } from "./swarm-panel";
 
-type Tab = "findings" | "breaches" | "requests";
+type Tab = "findings" | "swarm" | "breaches" | "requests";
 
 export function DashboardView() {
   const { hydrated, scan, requests, saveScan, reset, user, signIn } = useStore();
@@ -35,6 +40,7 @@ export function DashboardView() {
     if (!hydrated) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "requests") setTab("requests");
+    if (params.get("tab") === "swarm") setTab("swarm");
   }, [hydrated]);
 
   useEffect(() => {
@@ -164,8 +170,53 @@ export function DashboardView() {
     );
   }
 
+  const swarmFindingsCount = scan.findings.filter((f) =>
+    Boolean(f.discoveredByAgent)
+  ).length;
+
+  const mergeSwarmResults = (
+    newFindings: Finding[],
+    reports: SwarmAgentReport[]
+  ) => {
+    const existingByDomain = new Map(
+      scan.findings.map((f) => [f.domain.toLowerCase(), f])
+    );
+
+    const mergedFindings = [...scan.findings];
+    let addedCount = 0;
+
+    for (const incomingFinding of newFindings) {
+      const key = incomingFinding.domain.toLowerCase();
+      const existing = existingByDomain.get(key);
+      if (existing) {
+        const idx = mergedFindings.findIndex((f) => f.id === existing.id);
+        if (idx !== -1) {
+          mergedFindings[idx] = {
+            ...existing,
+            contactEmail: incomingFinding.contactEmail || existing.contactEmail,
+            discoveredByAgent:
+              incomingFinding.discoveredByAgent || existing.discoveredByAgent,
+            note: incomingFinding.note || existing.note,
+          };
+        }
+      } else {
+        existingByDomain.set(key, incomingFinding);
+        mergedFindings.unshift(incomingFinding);
+        addedCount += 1;
+      }
+    }
+
+    saveScan({
+      ...scan,
+      checked: scan.checked + addedCount,
+      findings: mergedFindings,
+      swarmReports: reports,
+    });
+  };
+
   const tabs: Array<{ id: Tab; label: string; count: number }> = [
     { id: "findings", label: "Findings", count: scan.findings.length },
+    { id: "swarm", label: "AI Agent Swarm", count: swarmFindingsCount },
     { id: "breaches", label: "Breaches", count: scan.breaches.length },
     { id: "requests", label: "Requests", count: requests.length },
   ];
@@ -194,6 +245,14 @@ export function DashboardView() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTab("swarm")}
+              className="btn btn-primary btn-sm"
+            >
+              <Bot className="size-3.5" strokeWidth={1.8} aria-hidden />
+              AI Agent Swarm
+            </button>
             <Link href="/scan" className="btn btn-secondary btn-sm">
               <RefreshCw className="size-3.5" strokeWidth={1.8} aria-hidden />
               New scan
@@ -288,16 +347,26 @@ export function DashboardView() {
           <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
             <ShieldCheck className="size-4 shrink-0 text-moss" strokeWidth={1.8} aria-hidden />
             <p className="text-xs leading-relaxed text-ink-soft">
-              Start with the high-risk people-search listings. They&apos;re the
-              quickest to remove and the most damaging to leave up.
+              Start with the high-risk people-search listings, or deploy the AI Agent Swarm
+              to search the live web for additional brokers and privacy contacts.
             </p>
-            <button
-              type="button"
-              className="btn btn-quiet btn-xs ml-auto"
-              onClick={() => setTab("findings")}
-            >
-              Show findings
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary btn-xs"
+                onClick={() => setTab("swarm")}
+              >
+                <Bot className="size-3.5 text-moss" />
+                Deploy AI Swarm
+              </button>
+              <button
+                type="button"
+                className="btn btn-quiet btn-xs"
+                onClick={() => setTab("findings")}
+              >
+                Show findings
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -349,6 +418,18 @@ export function DashboardView() {
                 }
               />
             )
+          ) : null}
+
+          {tab === "swarm" ? (
+            <SwarmPanel
+              profile={scan.profile}
+              findings={scan.findings}
+              swarmReports={scan.swarmReports}
+              statuses={statuses}
+              onMergeSwarmResults={mergeSwarmResults}
+              onCompose={(nextSeeds) => setSeeds(nextSeeds)}
+              onToast={setToast}
+            />
           ) : null}
 
           {tab === "breaches" ? <BreachesPanel breaches={scan.breaches} /> : null}

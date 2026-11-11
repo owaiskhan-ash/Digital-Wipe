@@ -145,6 +145,31 @@ export type Finding = {
   lastSeen: string;
   summary: string;
   note?: string;
+  /** Name of the AI Swarm Agent that discovered this exposure on the live web */
+  discoveredByAgent?: string;
+};
+
+export type SwarmAgentId =
+  | "directories"
+  | "b2b-brokers"
+  | "social-archives"
+  | "dpo-resolver";
+
+export type SwarmWebSource = {
+  title: string;
+  uri: string;
+};
+
+export type SwarmAgentReport = {
+  agentId: SwarmAgentId;
+  agentName: string;
+  role: string;
+  status: "completed" | "idle" | "running" | "error";
+  summary: string;
+  queriesRun: string[];
+  sources: SwarmWebSource[];
+  findingsCount: number;
+  completedAt: string;
 };
 
 export type BreachExposure = {
@@ -166,6 +191,7 @@ export type ScanResult = {
   findings: Finding[];
   breaches: BreachExposure[];
   demo: boolean;
+  swarmReports?: SwarmAgentReport[];
 };
 
 export type RequestStatus = "drafted" | "sent" | "confirmed" | "removed" | "refused";

@@ -47,7 +47,7 @@ service cloud.firestore {
     // Scan Validator
     function isValidScan(data, userId) {
       return data.keys().hasAll(['id', 'userId', 'createdAt', 'checked'])
-        && data.keys().hasOnly(['id', 'userId', 'createdAt', 'checked', 'demo', 'profile', 'findings', 'breaches'])
+        && data.keys().hasOnly(['id', 'userId', 'createdAt', 'checked', 'demo', 'profile', 'findings', 'breaches', 'swarmReports'])
         && data.id is string && isValidId(data.id)
         && data.userId == userId
         && data.createdAt is string && data.createdAt.size() <= 64
@@ -55,7 +55,8 @@ service cloud.firestore {
         && (!('demo' in data) || data.demo is bool)
         && (!('profile' in data) || data.profile is map)
         && (!('findings' in data) || (data.findings is list && data.findings.size() <= 500))
-        && (!('breaches' in data) || (data.breaches is list && data.breaches.size() <= 100));
+        && (!('breaches' in data) || (data.breaches is list && data.breaches.size() <= 100))
+        && (!('swarmReports' in data) || (data.swarmReports is list && data.swarmReports.size() <= 20));
     }
 
     // Removal Request Validator
@@ -94,7 +95,10 @@ service cloud.firestore {
       match /scans/{scanId} {
         allow get, list: if isOwner(userId) && isValidId(userId);
         allow create: if isOwner(userId) && isValidId(userId) && isValidId(scanId) && isVerified() && isValidScan(incoming(), userId);
-        allow update: if false; // Scans are immutable records
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(scanId) && isVerified() && isValidScan(incoming(), userId)
+          && incoming().id == existing().id
+          && incoming().userId == existing().userId
+          && incoming().diff(existing()).affectedKeys().hasOnly(['createdAt', 'checked', 'demo', 'profile', 'findings', 'breaches', 'swarmReports']);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(scanId);
       }
 

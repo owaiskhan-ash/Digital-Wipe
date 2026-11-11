@@ -1,4 +1,7 @@
 {
   "name": "Untrace",
-  "description": "Find every trace of your personal data online, then ask each owner to delete it."
+  "description": "Find every trace of your personal data online, then ask each owner to delete it.",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

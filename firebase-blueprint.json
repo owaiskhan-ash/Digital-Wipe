@@ -80,6 +80,10 @@
         "breaches": {
           "type": "array",
           "description": "List of discovered credential breach exposures."
+        },
+        "swarmReports": {
+          "type": "array",
+          "description": "Reports and live web sources discovered by the AI Reconnaissance Agent Swarm."
         }
       },
       "required": ["id", "userId", "createdAt", "checked"]
