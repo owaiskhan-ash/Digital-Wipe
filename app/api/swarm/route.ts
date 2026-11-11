@@ -943,38 +943,45 @@ export async function GET(request: Request) {
   const sample = params.get("sample")?.trim() || "";
   const sampleMode: "phone" | "email" =
     params.get("mode") === "email" ? "email" : "phone";
+  // ?only=1 runs the sample search on its own, so the timing it reports is the
+  // search's rather than the search plus two probes.
+  const sampleOnly = params.get("only") === "1" && Boolean(sample);
 
   try {
     const selftestDeadline = Date.now() + 50_000;
-    const probe = await probeGemini(apiKey, selftestDeadline);
+    const probe = sampleOnly
+      ? { model: "skipped", endpoint: "developer" }
+      : await probeGemini(apiKey, selftestDeadline);
 
     // Second probe: does this key and model actually run a grounded search?
-    let grounding: Record<string, unknown>;
-    try {
-      const grounded = await generateGroundedSearch(
-        apiKey,
-        'Search the web for "example.com" and reply with the single word: ok',
-        selftestDeadline
-      );
-      const chunks =
-        (
-          grounded.response as {
-            candidates?: Array<{ groundingMetadata?: { groundingChunks?: unknown[] } }>;
-          }
-        )?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0;
-      grounding = {
-        ok: true,
-        model: grounded.model,
-        endpoint: grounded.endpoint,
-        citations: chunks,
-      };
-    } catch (err) {
-      console.error("Grounding self test failed:", err);
-      grounding = {
-        ok: false,
-        error: describeSearchError(err),
-        raw: errorText(err).slice(0, 500),
-      };
+    let grounding: Record<string, unknown> = { skipped: true };
+    if (!sampleOnly) {
+      try {
+        const grounded = await generateGroundedSearch(
+          apiKey,
+          'Search the web for "example.com" and reply with the single word: ok',
+          selftestDeadline
+        );
+        const chunks =
+          (
+            grounded.response as {
+              candidates?: Array<{ groundingMetadata?: { groundingChunks?: unknown[] } }>;
+            }
+          )?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0;
+        grounding = {
+          ok: true,
+          model: grounded.model,
+          endpoint: grounded.endpoint,
+          citations: chunks,
+        };
+      } catch (err) {
+        console.error("Grounding self test failed:", err);
+        grounding = {
+          ok: false,
+          error: describeSearchError(err),
+          raw: errorText(err).slice(0, 500),
+        };
+      }
     }
 
     let dryrun: Record<string, unknown> | null = null;
