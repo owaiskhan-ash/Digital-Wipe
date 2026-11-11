@@ -146,8 +146,34 @@ function resolveGeminiApiKey(): string | undefined {
   return undefined;
 }
 
+let cachedKeyStatus: { key: string; valid: boolean; lastChecked: number } | null = null;
+
+async function isApiKeyFunctional(key?: string): Promise<boolean> {
+  if (!key || key.length < 20) return false;
+  const now = Date.now();
+  if (
+    cachedKeyStatus &&
+    cachedKeyStatus.key === key &&
+    now - cachedKeyStatus.lastChecked < 120_000
+  ) {
+    return cachedKeyStatus.valid;
+  }
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+      { signal: AbortSignal.timeout(1800) }
+    );
+    const valid = res.ok;
+    cachedKeyStatus = { key, valid, lastChecked: now };
+    return valid;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET() {
   const apiKey = resolveGeminiApiKey();
+  const functional = await isApiKeyFunctional(apiKey);
   const directKeys = [
     "GEMINI_API_KEY",
     "GOOGLE_API_KEY",
@@ -171,12 +197,14 @@ export async function GET() {
 
   return NextResponse.json({
     status: "ok",
-    scanEngineReady: Boolean(apiKey),
+    scanEngineReady: true,
+    geminiActive: functional,
+    engine: functional ? "Google Search Grounding (Gemini)" : "Open-Web Search Engine",
     detectedKeyVariables: detectedKeys,
     keyMasked: apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : null,
-    instruction: !apiKey
-      ? "Add GEMINI_API_KEY in Vercel (Project Settings -> Environment Variables, check Production, Preview, Development), then click Deployments -> Redeploy."
-      : "Scan engine configured and ready.",
+    instruction: functional
+      ? "Gemini Search Grounding is active and ready."
+      : "Open-Web Search Engine is active. To enable Gemini Search Grounding, select or add an active API key in Settings > Secrets.",
   });
 }
 
@@ -690,21 +718,22 @@ export async function POST(request: Request) {
   const allMentions: GroundedMention[] = [];
   let searchError: string | null = null;
 
-  // 1. If Gemini API key is configured, run live Google Search Grounding via Gemini
-  if (apiKey) {
+  // 1. If Gemini API key is functional, run live Google Search Grounding via Gemini
+  const canUseGemini = await isApiKeyFunctional(apiKey);
+  if (apiKey && canUseGemini) {
     try {
       const ai = getGeminiClient(apiKey);
-    const perms =
-      mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
-    const searchTermsFormatted = perms.map((p) => `"${p}"`).join(" OR ");
-    const emailParts =
-      mode === "email" && targetValue.includes("@")
-        ? targetValue.split("@")
-        : [];
+      const perms =
+        mode === "phone" ? buildPhonePermutations(targetValue) : [targetValue];
+      const searchTermsFormatted = perms.map((p) => `"${p}"`).join(" OR ");
+      const emailParts =
+        mode === "email" && targetValue.includes("@")
+          ? targetValue.split("@")
+          : [];
 
-    const groundedPrompt =
-      mode === "phone"
-        ? `Use Google Search to search for the exact phone number: ${searchTermsFormatted}
+      const groundedPrompt =
+        mode === "phone"
+          ? `Use Google Search to search for the exact phone number: ${searchTermsFormatted}
 Also search Google for "${targetValue.replace(/\D/g, "").slice(-10)}".
 
 CRITICAL INSTRUCTIONS:
@@ -717,11 +746,11 @@ CRITICAL INSTRUCTIONS:
    - "domain": Real website domain from the URL
    - "snippet": The exact snippet or context showing the phone number on that page
    - "contactEmail": Any owner, privacy, or contact email address visible on that site`
-        : `Use Google Search to search for the exact email address: "${targetValue}" and ${targetValue}${
-            emailParts.length === 2
-              ? ` and "${emailParts[0]}" "${emailParts[1]}"`
-              : ""
-          }.
+          : `Use Google Search to search for the exact email address: "${targetValue}" and ${targetValue}${
+              emailParts.length === 2
+                ? ` and "${emailParts[0]}" "${emailParts[1]}"`
+                : ""
+            }.
 
 CRITICAL INSTRUCTIONS:
 1. Look at EVERY actual website, company page, agency site, blog post, case study, contact page, or directory returned by Google Search that shows or mentions the email address "${targetValue}".
@@ -734,24 +763,15 @@ CRITICAL INSTRUCTIONS:
    - "snippet": The exact snippet or context showing how "${targetValue}" appears on that page
    - "contactEmail": A distinct owner, webmaster, or privacy contact email address for that website (do NOT set contactEmail to "${targetValue}")`;
 
-    const response = await generateGroundedSearch(ai, groundedPrompt);
-    const grounded = await extractGroundedMentions(response, targetValue);
-    allMentions.push(...grounded);
-  } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    if (/API_KEY_INVALID|API key not valid|INVALID_ARGUMENT/i.test(errMsg)) {
-      searchError =
-        "The Gemini API key is invalid or expired. Please check or select an active API key in Settings > Secrets (or set GEMINI_API_KEY in your deployment environment variables).";
-    } else if (/PERMISSION_DENIED|API_KEY_SERVICE_BLOCKED/i.test(errMsg)) {
-      searchError =
-        "This API key lacks Generative Language API permissions. Please create or select an active key in Google AI Studio or Settings > Secrets.";
-    } else if (/RESOURCE_EXHAUSTED|quota/i.test(errMsg)) {
-      searchError =
-        "Gemini API quota exceeded for this key. Please select a billing-enabled API key in Settings > Secrets.";
-    } else {
-      searchError = errMsg || "The web search could not be completed.";
-    }
-    console.warn("Live Google Search grounding unavailable, using open-web search:", err);
+      const response = await generateGroundedSearch(ai, groundedPrompt);
+      const grounded = await extractGroundedMentions(response, targetValue);
+      allMentions.push(...grounded);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      searchError = errMsg;
+      if (apiKey) {
+        cachedKeyStatus = { key: apiKey, valid: false, lastChecked: Date.now() };
+      }
     }
   }
 
