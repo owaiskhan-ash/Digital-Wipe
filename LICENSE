@@ -1,25 +1,3 @@
-Untrace
-Copyright (C) 2026 Owais Khan
-
-SPDX-License-Identifier: AGPL-3.0-or-later
-
-Untrace is free software: you can redistribute it and/or modify it under the
-terms of the GNU Affero General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
-
-Untrace is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
-
-Because this runs as a network service, section 13 applies: if you host a
-modified version, you must offer its complete source code to the people using
-it.
-
-The full licence text follows.
-
---------------------------------------------------------------------------------
-
 GNU AFFERO GENERAL PUBLIC LICENSE
 Version 3, 19 November 2007
 
