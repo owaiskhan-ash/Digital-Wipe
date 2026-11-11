@@ -35,16 +35,23 @@ export function setCachedAccessToken(token: string | null) {
   cachedAccessToken = token;
 }
 
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: "select_account" });
-// Mandatory Gmail sending scope for deletion requests
-googleProvider.addScope("https://www.googleapis.com/auth/gmail.send");
+// Basic provider for 1-click website login (only openid, email, profile — avoids 403 on initial login)
+export const basicGoogleProvider = new GoogleAuthProvider();
+basicGoogleProvider.setCustomParameters({ prompt: "select_account" });
 
-export async function signInWithGoogle(): Promise<{ user: User; accessToken: string | null }> {
-  const result = await signInWithPopup(auth, googleProvider);
+// Incremental provider for Gmail API sending (requests gmail.send only when sending via Gmail API)
+export const gmailGoogleProvider = new GoogleAuthProvider();
+gmailGoogleProvider.setCustomParameters({ prompt: "consent select_account" });
+gmailGoogleProvider.addScope("https://www.googleapis.com/auth/gmail.send");
+
+export async function signInWithGoogle(
+  includeGmailScope = false
+): Promise<{ user: User; accessToken: string | null }> {
+  const provider = includeGmailScope ? gmailGoogleProvider : basicGoogleProvider;
+  const result = await signInWithPopup(auth, provider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   const token = credential?.accessToken ?? null;
-  if (token) {
+  if (token && includeGmailScope) {
     setCachedAccessToken(token);
   }
   return { user: result.user, accessToken: token };
@@ -59,8 +66,8 @@ export async function ensureGmailToken(): Promise<string> {
   if (cachedAccessToken) {
     return cachedAccessToken;
   }
-  // If not cached (e.g. page refreshed), trigger popup to renew Workspace token
-  const { accessToken } = await signInWithGoogle();
+  // Request Gmail send scope when the user actually sends an email via Gmail API
+  const { accessToken } = await signInWithGoogle(true);
   if (!accessToken) {
     throw new Error("Unable to obtain Gmail authorization token. Please sign in again.");
   }

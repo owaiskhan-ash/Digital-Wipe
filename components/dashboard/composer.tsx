@@ -468,7 +468,7 @@ export function Composer({
           {/* Footer */}
           <div className="border-t border-line bg-paper px-5 py-4 md:px-7">
             <div className="flex flex-wrap items-center gap-2">
-              {/* Primary: Send with Gmail */}
+              {/* Primary: Send with Gmail API */}
               <button
                 type="button"
                 onClick={handleInitiateGmailSend}
@@ -480,6 +480,24 @@ export function Composer({
                 </svg>
                 <span>Send with Gmail</span>
               </button>
+
+              {entry.contact.trim() ? (
+                <a
+                  href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                    entry.contact.trim()
+                  )}&su=${encodeURIComponent(entry.subject)}&body=${encodeURIComponent(
+                    entry.body
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => persist("sent")}
+                  className="btn btn-secondary btn-sm"
+                  title="Open pre-filled message in Gmail Web (no OAuth verification required)"
+                >
+                  <ExternalLink className="size-3.5" strokeWidth={1.8} aria-hidden />
+                  Gmail Web
+                </a>
+              ) : null}
 
               <button type="button" onClick={openMail} className="btn btn-secondary btn-sm">
                 <Mail className="size-3.5" strokeWidth={1.8} aria-hidden />
@@ -572,12 +590,26 @@ export function Composer({
             </div>
 
             {gmailError && (
-              <p className="mt-3 rounded-lg border border-clay/30 bg-clay-soft px-3 py-2 text-xs text-clay">
-                {gmailError}
-              </p>
+              <div className="mt-3 rounded-lg border border-clay/30 bg-clay-soft px-3.5 py-2.5 text-xs text-clay space-y-1.5">
+                <p>{gmailError}</p>
+                <p className="text-ink-soft">
+                  Seeing <strong className="font-medium text-ink">Error 403: access_denied</strong>?
+                  Add your email to{" "}
+                  <a
+                    href="https://console.cloud.google.com/auth/audience?project=gen-lang-client-0472789139"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline font-medium text-ink"
+                  >
+                    Google Cloud OAuth Test Users / Publish App
+                  </a>{" "}
+                  or click <strong className="font-medium text-ink">Gmail Web</strong> to send
+                  immediately without OAuth.
+                </p>
+              </div>
             )}
 
-            <div className="mt-6 flex items-center justify-end gap-2.5">
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5">
               <button
                 type="button"
                 disabled={isSendingGmail}
@@ -586,6 +618,25 @@ export function Composer({
               >
                 Cancel
               </button>
+              {entry.contact.trim() ? (
+                <a
+                  href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                    entry.contact.trim()
+                  )}&su=${encodeURIComponent(entry.subject)}&body=${encodeURIComponent(
+                    entry.body
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    setShowConfirmModal(false);
+                    persist("sent");
+                  }}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Open in Gmail Web
+                  <ExternalLink className="size-3.5" />
+                </a>
+              ) : null}
               <button
                 type="button"
                 disabled={isSendingGmail}
