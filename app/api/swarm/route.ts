@@ -236,6 +236,9 @@ function describeSearchError(err: unknown): string {
   if (/RESOURCE_EXHAUSTED|quota|rate limit/i.test(text)) {
     return "The Gemini API quota for this key is exhausted. Use a key with billing enabled, or wait for the quota to reset.";
   }
+  if (/grounding|google ?search|tool/i.test(text) && /not supported|unsupported|invalid/i.test(text)) {
+    return "This model rejected the Google Search tool, so grounding cannot run with it. Pick a model that supports search grounding, or rely on the keyed search provider.";
+  }
   if (/404|not found|NOT_FOUND/i.test(text)) {
     return "No Gemini model was available for this key. Check that the Generative Language API is enabled for the project that owns the key.";
   }
@@ -886,6 +889,35 @@ export async function GET(request: Request) {
   const startedAt = Date.now();
   try {
     const probe = await probeGemini(apiKey);
+
+    // Second probe: does this key and model actually run a grounded search?
+    let grounding: Record<string, unknown>;
+    try {
+      const grounded = await generateGroundedSearch(
+        apiKey,
+        'Search the web for "example.com" and reply with the single word: ok'
+      );
+      const chunks =
+        (
+          grounded.response as {
+            candidates?: Array<{ groundingMetadata?: { groundingChunks?: unknown[] } }>;
+          }
+        )?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0;
+      grounding = {
+        ok: true,
+        model: grounded.model,
+        endpoint: grounded.endpoint,
+        citations: chunks,
+      };
+    } catch (err) {
+      console.error("Grounding self test failed:", err);
+      grounding = {
+        ok: false,
+        error: describeSearchError(err),
+        raw: errorText(err).slice(0, 500),
+      };
+    }
+
     return NextResponse.json(
       {
         ...base,
@@ -895,6 +927,7 @@ export async function GET(request: Request) {
           model: probe.model,
           endpoint: probe.endpoint,
           latencyMs: Date.now() - startedAt,
+          grounding,
         },
       },
       { headers: { "Cache-Control": "no-store" } }
