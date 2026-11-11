@@ -64,18 +64,18 @@ const TICKER = [
 const STEPS = [
   {
     icon: Search,
-    title: "Tell us three things",
-    body: "Your name, the city you live in, and an email address. Add a phone number or a username if you want a deeper scan.",
+    title: "Enter your client's details",
+    body: "Provide a name, city, and optional email, phone, or username. Add any extra context to guide the search.",
   },
   {
     icon: Layers,
-    title: "See your exposure",
-    body: "We check 45 directories, databases and archives, then group what we find by how sensitive it is.",
+    title: "Deploy the 4-Agent AI Swarm",
+    body: "Four specialized AI agents search across the entire internet via Google Search to find directories, B2B brokers, and public records—plus each site's DPO email.",
   },
   {
     icon: Send,
-    title: "Ask each owner to delete it",
-    body: "Every listing gets a deletion request written for that company, citing the law in your country. You review, send, and track the reply.",
+    title: "Send removal emails in one click",
+    body: "Every discovered source gets a tailored GDPR, CCPA, or DPDP deletion notice addressed to its privacy officer. Review and send straight from your Gmail.",
   },
 ];
 
@@ -92,35 +92,31 @@ const PROMISES = [
   },
   {
     icon: Lock,
-    title: "Held in your browser",
-    body: "Your report and request history live in this browser's storage. There is no account and no server copy.",
+    title: "Private & synced to your account",
+    body: "Your scan reports and removal queue stay private in your browser or synced securely to your authenticated account.",
   },
 ];
 
 const QUESTIONS = [
   {
     q: "Am I allowed to do this?",
-    a: "Yes. Privacy laws in California, across the EU and UK, and in a growing number of US states give you the right to demand deletion of your personal data and to opt out of its sale. Most data brokers also run an opt-out page of their own because the law requires it. Untrace just does the tedious part.",
+    a: "Yes. Privacy laws in California (CCPA), across the EU and UK (GDPR), India (DPDP Act), and dozens of other jurisdictions give individuals the right to demand deletion of their personal data and opt out of its sale.",
   },
   {
-    q: "Does Untrace send emails on my behalf?",
-    a: "No. You review every message and send it from your own mailbox: either with the one-click email link, or by pasting it into the company's opt-out form. Nothing leaves your computer unless you press send.",
+    q: "How does the AI Agent Swarm find exposures?",
+    a: "When you start a scan, four specialized Gemini AI agents run live Google Search reconnaissance across the entire internet—checking global and regional people-search directories, caller-ID apps, B2B lead databases, social archives, and Data Protection Officer (DPO) registries.",
+  },
+  {
+    q: "Does Untrace send emails automatically without my review?",
+    a: "No. Every deletion email is drafted for your review first. You can dispatch it with one click via your connected Gmail account (with confirmation) or open it pre-filled in Gmail Web or your mail app.",
   },
   {
     q: "How long does a removal take?",
-    a: "Most people-search sites act within one to three weeks. Companies have 45 days under California law and one month under GDPR to answer. Untrace keeps a follow-up date for each request so nothing quietly expires.",
+    a: "Most people-search sites and B2B brokers act within one to three weeks. Companies have 30 to 45 days under statutory privacy laws to respond. Untrace tracks a follow-up date for each sent request.",
   },
   {
     q: "What if a company ignores me or says no?",
-    a: "Two moves. First, send the follow-up. It restates the request and names a deadline. If that's ignored too, you can complain to your data protection authority (or state attorney general) and ask Google to de-index the page. Both paths are one click from your report.",
-  },
-  {
-    q: "Why do listings come back after removal?",
-    a: "Brokers re-scrape public records and licensed data on a schedule, so a removed profile can reappear months later. Rescan every quarter and treat suppression as maintenance, not a one-time fix.",
-  },
-  {
-    q: "Where do the results come from?",
-    a: "This build ships with a curated directory of 45 real public directories and their official opt-out pages. Scan results are illustrative: a modelled view of what a live scan returns. Removal links, legal templates and the request tracker are fully functional.",
+    a: "First, send a follow-up restating the statutory deadline. If ignored, you can escalate to your national data protection authority (or state attorney general) and request search engine de-indexing.",
   },
 ];
 
@@ -153,10 +149,10 @@ const STRUCTURED_DATA = {
       description: SITE_DESCRIPTION,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       featureList: [
-        "Scan 45 people-search sites, marketing databases and ad profiles",
-        "Rank exposures by risk and category",
-        "Generate a deletion request for each company",
-        "Track removal requests and follow-ups",
+        "Open-web AI Agent Swarm across people-search sites, B2B brokers and archives worldwide",
+        "Automatic DPO and privacy officer email resolution",
+        "Generate statutory GDPR, CCPA, and DPDP deletion requests",
+        "1-click Gmail dispatch and follow-up tracking",
       ],
     },
     {
@@ -184,7 +180,7 @@ Details to identify and suppress:
 - Associated Email: [Your Email]
 
 Legal Basis:
-Under applicable privacy legislation (including CCPA / GDPR), I hereby exercise my right to erasure and request that you cease selling, licensing, or publishing my personal records.
+Under applicable privacy legislation (including CCPA / GDPR / DPDP), I hereby exercise my right to erasure and request that you cease selling, licensing, or publishing my personal records.
 
 Please confirm suppression within the statutory response window.`,
 };
@@ -204,23 +200,24 @@ export default function HomePage() {
         <section className="relative overflow-hidden">
           <div className="container-page grid items-center gap-14 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-24">
             <div className="animate-fade-up">
-              <SectionLabel>Personal data removal</SectionLabel>
+              <SectionLabel>AI-Powered Personal Data Removal</SectionLabel>
 
               <h1 className="mt-5 text-[2.5rem] leading-[1.04] tracking-[-0.02em] text-ink sm:text-[3rem] lg:text-[3.5rem]">
-                45 sites sell
-                <span className="block">your address</span>
+                Hundreds of sites sell
+                <span className="block">your personal data</span>
                 <span className="block text-muted">to anyone who asks.</span>
               </h1>
 
               <p className="mt-7 max-w-xl text-[1.0625rem] leading-[1.7] text-ink-soft">
-                Untrace finds every listing that holds your name, street and
-                phone number, then writes the deletion request that takes you
-                off each one. Send directly via Gmail or your mail app.
+                Untrace deploys a 4-agent AI reconnaissance swarm across the open
+                internet to find every directory, data broker, and archive holding
+                your details—resolving their privacy emails so you can send legal
+                deletion requests in one click via Gmail.
               </p>
 
               <div className="mt-9 flex flex-wrap items-center gap-3">
                 <Link href="/scan" className="btn btn-primary">
-                  Start a free scan
+                  Deploy AI Agent Swarm
                   <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
                 </Link>
                 <Link href="/dashboard" className="btn btn-secondary">
@@ -230,9 +227,9 @@ export default function HomePage() {
 
               <ul className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[0.8125rem] text-muted">
                 {[
-                  `${BROKERS.length} sources checked`,
-                  "No account needed",
-                  "Nothing sent without you",
+                  "Open-web Google Search AI Swarm",
+                  "Resolves DPO & privacy emails",
+                  "1-click Gmail removal dispatch",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-1.5">
                     <Check className="size-3.5 text-moss" strokeWidth={2.2} aria-hidden />

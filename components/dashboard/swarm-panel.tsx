@@ -74,6 +74,7 @@ export function SwarmPanel({
 }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customQuery, setCustomQuery] = useState("");
   const [expandedAgent, setExpandedAgent] = useState<SwarmAgentId | null>(null);
 
   const swarmFindings = findings.filter((f) => Boolean(f.discoveredByAgent));
@@ -89,6 +90,7 @@ export function SwarmPanel({
         body: JSON.stringify({
           profile,
           existingDomains: findings.map((f) => f.domain),
+          customQuery: customQuery.trim(),
         }),
       });
 
@@ -134,16 +136,17 @@ export function SwarmPanel({
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-moss/25 bg-surface px-3 py-1 text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-moss-deep">
                 <Radar className={cn("size-3.5 text-moss", running && "animate-spin")} />
-                Multi-Agent Web Reconnaissance
+                Open-Web Multi-Agent Reconnaissance
               </div>
               <h2 className="mt-3 text-[1.75rem] leading-tight text-ink sm:text-[2rem]">
                 AI Agent Swarm for{" "}
                 <span className="text-moss-deep">{profile.fullName}</span>
               </h2>
               <p className="mt-2 text-xs leading-relaxed text-ink-soft sm:text-sm">
-                Deploy 4 autonomous AI agents powered by live Google Search grounding to
-                hunt across people-search sites, B2B lead brokers, web archives, and DPO
-                registries—building a ready-to-send email removal list for your client.
+                4 autonomous Gemini agents search across the entire internet using live
+                Google Search—discovering directories, caller-ID apps, B2B lead databases,
+                social archives, and official DPO emails so you can send removal notices in
+                one click.
               </p>
             </div>
 
@@ -180,7 +183,7 @@ export function SwarmPanel({
                 ) : swarmReports.length > 0 ? (
                   <>
                     <RefreshCw className="size-4" strokeWidth={1.8} />
-                    Re-deploy AI Swarm
+                    Find More Across the Web
                   </>
                 ) : (
                   <>
@@ -189,6 +192,29 @@ export function SwarmPanel({
                   </>
                 )}
               </button>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search
+                className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
+                strokeWidth={1.8}
+              />
+              <input
+                type="text"
+                value={customQuery}
+                onChange={(e) => setCustomQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !running) {
+                    e.preventDefault();
+                    runSwarm();
+                  }
+                }}
+                placeholder="Optional focus for next sweep: e.g. employer, profession, phone directory, old city, or specific website..."
+                className="field bg-surface pl-10 text-xs"
+                disabled={running}
+              />
             </div>
           </div>
 

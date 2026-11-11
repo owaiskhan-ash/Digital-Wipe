@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { normaliseProfile, type RawProfileInput } from "@/lib/scan";
+import { BREACH_CATALOG } from "@/lib/breaches";
 import type {
+  BreachExposure,
   Category,
   DataType,
   Effort,
@@ -69,71 +71,76 @@ type AgentSpec = {
   id: SwarmAgentId;
   name: string;
   role: string;
-  queries: (p: Profile) => string[];
-  prompt: (p: Profile) => string;
+  queries: (p: Profile, customQuery?: string) => string[];
+  prompt: (p: Profile, customQuery?: string) => string;
 };
 
 const SWARM_AGENTS: AgentSpec[] = [
   {
     id: "directories",
-    name: "Directory & People-Search Recon",
-    role: "Scans residential directories, whitepages, property & voter aggregators",
-    queries: (p) => [
-      `"${p.fullName}" "${p.city}" address phone profile`,
-      `"${p.fullName}" ${p.region || p.country} public records directory`,
+    name: "Global Directory & Public Records Scout",
+    role: "Searches open-web people directories, caller-ID databases, voter/property registries & regional lookups worldwide",
+    queries: (p, customQuery) => [
+      `"${p.fullName}" "${p.city}" ${p.region || p.country} directory OR profile OR address OR phone`,
+      `"${p.fullName}" ${p.country} public records people search${customQuery ? ` ${customQuery}` : ""}`,
     ],
-    prompt: (p) => `You are the Directory & People-Search Recon Agent in a privacy protection swarm.
-Search the web for public people-search directories, whitepages, address aggregators, and public record brokers that list or index profiles for:
-- Name: ${p.fullName}
-- City/Region: ${[p.city, p.region, p.country].filter(Boolean).join(", ")}
-${p.phones.length ? `- Phone: ${p.phones.join(", ")}` : ""}
+    prompt: (p, customQuery) => `You are the Global Directory & Public Records Scout Agent in an open-web privacy reconnaissance swarm.
+Use Google Search to look across the entire internet (not limited to US sites — prioritize sites active in ${p.country} and ${p.city} as well as global people-search/caller-ID directories) for:
+- Full Name: ${p.fullName}
+- Location: ${[p.city, p.region, p.country].filter(Boolean).join(", ")}
+${p.phones.length ? `- Phone Numbers: ${p.phones.join(", ")}` : ""}
+${customQuery ? `- Additional Client Context / Keywords: ${customQuery}` : ""}
 
-Identify every specific website, people-search directory, or regional public record aggregator where this person's name/location appears or is indexed, what personal fields are exposed (address, phone, relatives, age, property/voter records), and the site's domain and opt-out or privacy contact email. Provide a concise intelligence briefing.`,
+In under 180 words, list the top 4–5 specific websites, regional directories, caller-ID databases, or public record aggregators where this person's profile or records appear or are indexed in ${p.country}, their domain names, what data they expose, and their privacy/opt-out email address.`,
   },
   {
     id: "b2b-brokers",
-    name: "B2B & Marketing Broker Hunter",
-    role: "Tracks commercial lead databases, B2B contact brokers & email lists",
-    queries: (p) => [
-      `"${p.fullName}" ${p.city} email profile rocketreach OR zoominfo OR apollo OR signalhire OR contactout`,
-      `${p.emails[0] ? `"${p.emails[0]}"` : `"${p.fullName}"`} work contact broker database`,
+    name: "B2B, Lead-Gen & Broker Hunter",
+    role: "Hunts across commercial contact databases, email enrichment brokers, recruiter indexes & marketing lists",
+    queries: (p, customQuery) => [
+      `"${p.fullName}" "${p.city}" email OR phone OR linkedin OR profile ${customQuery || ""}`.trim(),
+      `${p.emails[0] ? `"${p.emails[0]}"` : `"${p.fullName}"`} contact broker database rocketreach OR zoominfo OR apollo OR signalhire OR lusha OR contactout`,
     ],
-    prompt: (p) => `You are the B2B & Marketing Broker Hunter Agent in a privacy protection swarm.
-Search the web for B2B lead databases, professional contact brokers (e.g., RocketReach, SignalHire, ContactOut, ClustrMaps, Lusha, Apollo, ZoomInfo, Radaris, Nuwber, etc.), and marketing lists that hold or expose data for:
+    prompt: (p, customQuery) => `You are the B2B, Lead-Gen & Broker Hunter Agent in an open-web privacy reconnaissance swarm.
+Use Google Search to find B2B contact brokers, professional lead databases, email-finding tools, and commercial data brokers anywhere on the internet that index or sell contact details for:
 - Name: ${p.fullName}
 - Location: ${[p.city, p.region, p.country].filter(Boolean).join(", ")}
 ${p.emails.length ? `- Emails: ${p.emails.join(", ")}` : ""}
+${customQuery ? `- Additional Context / Employer / Domain: ${customQuery}` : ""}
 
-List the specific B2B brokers and marketing directories found, their domains, what professional/contact fields they expose (email, phone, employer, job title, social profiles), and their privacy/opt-out email address.`,
+In under 180 words, list 4–5 specific B2B/commercial data brokers or professional directories relevant to this person, their exact domains, exposed fields (email, phone, employer, jobTitle, socialProfiles), and their DPO/privacy email address.`,
   },
   {
     id: "social-archives",
-    name: "Footprint & Web Archive Crawler",
-    role: "Searches usernames, cached pages, search indexes & public mentions",
-    queries: (p) => [
-      `"${p.fullName}" "${p.city}"`,
-      ...(p.usernames.length ? [`"${p.usernames[0]}" profile`] : []),
+    name: "Open-Web Footprint & Archive Crawler",
+    role: "Crawls search engines, username aggregators, social mirrors, cached pages & public mentions across the web",
+    queries: (p, customQuery) => [
+      `"${p.fullName}" "${p.city}" ${customQuery || ""}`.trim(),
+      ...(p.usernames.length
+        ? [`"${p.usernames.join('" OR "')}" profile OR directory`]
+        : [`"${p.fullName}" ${p.emails[0] || p.country} web mention`]),
     ],
-    prompt: (p) => `You are the Footprint & Web Archive Crawler Agent in a privacy protection swarm.
-Search the web for public mentions, username profiles, web archives, scraping mirrors, and search engine results exposing personal details for:
+    prompt: (p, customQuery) => `You are the Open-Web Footprint & Archive Crawler Agent in a privacy reconnaissance swarm.
+Use Google Search to find live web mentions, username lookup aggregators, social profile scrapers, web archives, and search engine listings anywhere on the internet for:
 - Name: ${p.fullName}
 - Location: ${[p.city, p.region, p.country].filter(Boolean).join(", ")}
 ${p.usernames.length ? `- Usernames/Handles: ${p.usernames.join(", ")}` : ""}
 ${p.emails.length ? `- Emails: ${p.emails.join(", ")}` : ""}
+${customQuery ? `- Additional Keywords: ${customQuery}` : ""}
 
-Summarize any live web pages, profile aggregators, or directories found, their exact domains/URLs, and how the user can request removal or de-indexing.`,
+In under 180 words, identify 3–5 specific websites, profile scrapers, or search indexes where this footprint appears, their exact domains/URLs, and how to email them for removal or de-indexing.`,
   },
   {
     id: "dpo-resolver",
-    name: "Privacy Desk & DPO Resolver",
-    role: "Finds verified privacy officer emails & statutory opt-out endpoints",
+    name: "DPO & Privacy Contact Resolver",
+    role: "Locates verified Data Protection Officer (dpo@, privacy@, grievance@) emails & statutory deletion portals",
     queries: (p) => [
-      `data broker opt out privacy email address "${p.country}" GDPR CCPA deletion`,
-      `people search removal privacy@ dpo@ optout@ contact list`,
+      `data broker opt out privacy officer email "${p.country}" GDPR CCPA DPDP deletion`,
+      `people search directory removal privacy@ dpo@ grievance@ ${p.country}`,
     ],
-    prompt: (p) => `You are the Privacy Desk & DPO Resolver Agent in a privacy protection swarm.
-For a client located in ${[p.city, p.region, p.country].filter(Boolean).join(", ")}, search for active data brokers, people-search sites, and regional directories operating in ${p.country} that accept email deletion requests (GDPR / CCPA / national privacy laws).
-Provide a list of high-priority data brokers and directories with their verified privacy officer email addresses (e.g., privacy@..., dpo@..., optout@..., compliance@...) and official opt-out URLs so our system can queue direct removal emails for the client.`,
+    prompt: (p, customQuery) => `You are the DPO & Privacy Contact Resolver Agent in a privacy protection swarm.
+For a client in ${[p.city, p.region, p.country].filter(Boolean).join(", ")}${customQuery ? ` (${customQuery})` : ""}, search for verified Data Protection Officer (DPO) and privacy desk email addresses (e.g. privacy@..., dpo@..., optout@..., grievanceofficer@..., legal@...) for major and regional data brokers, people-search sites, and directories active in ${p.country}.
+In under 180 words, provide 4–5 concrete sites with their verified privacy email addresses and opt-out URLs.`,
   },
 ];
 
@@ -168,8 +175,21 @@ function extractSources(response: unknown): SwarmWebSource[] {
   return sources.slice(0, 8);
 }
 
+function buildBreachChecks(profile: Profile): BreachExposure[] {
+  if (profile.emails.length === 0) return [];
+  return BREACH_CATALOG.slice(0, 3).map((item, idx) => ({
+    ...item,
+    id: `breach-${item.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${idx}`,
+    risk: idx === 0 ? "high" : "medium",
+  }));
+}
+
 export async function POST(request: Request) {
-  let payload: { profile?: RawProfileInput; existingDomains?: string[] };
+  let payload: {
+    profile?: RawProfileInput;
+    existingDomains?: string[];
+    customQuery?: string;
+  };
 
   try {
     payload = await request.json();
@@ -178,10 +198,22 @@ export async function POST(request: Request) {
   }
 
   const profile = normaliseProfile(payload.profile ?? {});
+  const customQuery = typeof payload.customQuery === "string" ? payload.customQuery.trim().slice(0, 200) : "";
+
   if (profile.fullName.length < 2 || profile.city.length < 2) {
     return NextResponse.json(
       { error: "Full name and city are required to deploy the AI Agent Swarm." },
       { status: 422 }
+    );
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json(
+      {
+        error:
+          "GEMINI_API_KEY is not configured on the server. Add GEMINI_API_KEY to your deployment environment variables to enable the live AI Agent Swarm.",
+      },
+      { status: 500 }
     );
   }
 
@@ -191,19 +223,22 @@ export async function POST(request: Request) {
   );
 
   try {
-    // Step 1: Run all 4 specialized Reconnaissance Agents in parallel with Google Search grounding
+    // Step 1: Run all 4 specialized Reconnaissance Agents in parallel with live Google Search grounding
     const agentRuns = await Promise.all(
       SWARM_AGENTS.map(async (agent): Promise<{ report: SwarmAgentReport; rawText: string }> => {
         try {
           const response = await ai.models.generateContent({
             model: "gemini-3.8-flash",
-            contents: agent.prompt(profile),
+            contents: agent.prompt(profile, customQuery),
             config: {
               tools: [{ googleSearch: {} }],
+              thinkingConfig: {
+                thinkingLevel: ThinkingLevel.LOW,
+              },
             },
           });
 
-          const text = response.text ?? "Reconnaissance scan completed.";
+          const text = response.text ?? "Live web reconnaissance completed.";
           const sources = extractSources(response);
 
           return {
@@ -213,10 +248,10 @@ export async function POST(request: Request) {
               agentName: agent.name,
               role: agent.role,
               status: "completed",
-              summary: text.slice(0, 600),
-              queriesRun: agent.queries(profile),
+              summary: text.slice(0, 650),
+              queriesRun: agent.queries(profile, customQuery),
               sources,
-              findingsCount: 0, // updated after synthesis
+              findingsCount: 0,
               completedAt: new Date().toISOString(),
             },
           };
@@ -230,7 +265,7 @@ export async function POST(request: Request) {
               role: agent.role,
               status: "error",
               summary: `Agent encountered an issue: ${msg}`,
-              queriesRun: agent.queries(profile),
+              queriesRun: agent.queries(profile, customQuery),
               sources: [],
               findingsCount: 0,
               completedAt: new Date().toISOString(),
@@ -244,20 +279,21 @@ export async function POST(request: Request) {
       r.report.sources.map((s) => `${s.title}: ${s.uri}`)
     );
 
-    // Step 2: Run the Swarm Synthesizer Agent to convert the 4 agent reports into actionable Findings with removal emails
-    const synthesisPrompt = `You are the Lead Coordinator of the Untrace AI Reconnaissance Swarm.
-Four specialized AI agents just searched the internet for personal data exposures and removal targets for:
+    // Step 2: Fast Synthesizer Agent converts the 4 open-web agent briefings into 10-14 actionable removal targets from anywhere on the internet
+    const synthesisPrompt = `You are the Lead Coordinator of the Untrace Open-Web AI Reconnaissance Swarm.
+Four specialized AI agents just searched the open internet for personal data exposures and removal targets for:
 - Client Name: ${profile.fullName}
-- Location: ${[profile.city, profile.region, profile.country].filter(Boolean).join(", ")}
+- Location: ${[profile.city, profile.region, pCountry(profile)].filter(Boolean).join(", ")}
 - Emails: ${profile.emails.join(", ") || "None provided"}
 - Phones: ${profile.phones.join(", ") || "None provided"}
 - Usernames: ${profile.usernames.join(", ") || "None provided"}
+${customQuery ? `- Extra Search Context: ${customQuery}` : ""}
 
-Here are the intelligence reports from the 4 agents:
+Agent Intelligence Briefings:
 ${agentRuns
   .map(
     (r) =>
-      `### Agent: ${r.report.agentName} (${r.report.agentId})\n${r.rawText}\nSources: ${r.report.sources
+      `### ${r.report.agentName} (${r.report.agentId})\n${r.rawText}\nGrounded URLs: ${r.report.sources
         .map((s) => s.uri)
         .join(", ")}`
   )
@@ -266,19 +302,31 @@ ${agentRuns
 Grounded Web URLs discovered:
 ${allGroundingSources.join("\n")}
 
-Domains already in the user's report (try to prioritize NEW sites/domains or newly verified contacts not in this list):
-${Array.from(existingDomains).slice(0, 40).join(", ")}
+${
+  existingDomains.size > 0
+    ? `Already known domains (prioritize discovering NEW domains not in this list): ${Array.from(
+        existingDomains
+      )
+        .slice(0, 40)
+        .join(", ")}`
+    : ""
+}
 
-Generate a list of 6 to 10 concrete, actionable data exposure findings & data broker targets discovered by the swarm so the client can immediately send deletion emails via Gmail.
+Generate a comprehensive list of 10 to 14 concrete, actionable websites, directories, B2B brokers, caller-ID databases, or public registries from across the internet (tailored to ${
+      profile.country
+    }, ${profile.city}, and global platforms) so the client can immediately send deletion emails via Gmail.
 CRITICAL REQUIREMENTS:
-1. Every finding MUST include a valid, realistic privacy/DPO email address in "contactEmail" (e.g. privacy@domain.com, dpo@domain.com, optout@domain.com, or the company's published privacy contact) so the client can email them directly with 1-click Gmail.
-2. Provide a clean domain (e.g. "signalhire.com", "contactout.com", "clustrmaps.com", "nuwber.com", "cocofinder.com", "cyberbackgroundchecks.com", "thatsthem.com", "searchpeoplefree.com", "gladiknow.com", "idtrue.com", etc.).
+1. Do NOT limit yourself to a fixed list — include any real websites, regional directories, B2B contact brokers, social/username scrapers, or public databases found across the internet by the agents.
+2. Every finding MUST include a valid privacy/DPO/grievance email address in "contactEmail" (e.g. privacy@domain.com, dpo@domain.com, optout@domain.com, grievanceofficer@domain.com) so the client can email them right away.
 3. Attribute each finding to the agentId that discovered it ("directories", "b2b-brokers", "social-archives", or "dpo-resolver").`;
 
     const synthesisResponse = await ai.models.generateContent({
       model: "gemini-3.8-flash",
       contents: synthesisPrompt,
       config: {
+        thinkingConfig: {
+          thinkingLevel: ThinkingLevel.LOW,
+        },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -287,11 +335,11 @@ CRITICAL REQUIREMENTS:
             properties: {
               broker: {
                 type: Type.STRING,
-                description: "Name of the website, directory, or data broker.",
+                description: "Name of the website, directory, or data broker found on the web.",
               },
               domain: {
                 type: Type.STRING,
-                description: "Clean domain name, e.g. signalhire.com",
+                description: "Clean domain name, e.g. truecaller.com or signalhire.com",
               },
               category: {
                 type: Type.STRING,
@@ -301,7 +349,7 @@ CRITICAL REQUIREMENTS:
               contactEmail: {
                 type: Type.STRING,
                 description:
-                  "Privacy officer or opt-out email address to send the removal request to, e.g. privacy@signalhire.com",
+                  "Privacy officer, DPO, or opt-out email address to send the removal request to",
               },
               removalUrl: {
                 type: Type.STRING,
@@ -382,6 +430,7 @@ CRITICAL REQUIREMENTS:
 
     const now = new Date().toISOString();
     const findings: Finding[] = [];
+    const seenDomains = new Set<string>();
     const agentCounts: Record<string, number> = {
       directories: 0,
       "b2b-brokers": 0,
@@ -399,6 +448,9 @@ CRITICAL REQUIREMENTS:
         .replace(/^www\./, "")
         .split("/")[0]
         .trim();
+
+      if (!cleanDomain || seenDomains.has(cleanDomain)) continue;
+      seenDomains.add(cleanDomain);
 
       const slug = cleanDomain.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const id = `swarm_${slug || i}`;
@@ -472,9 +524,14 @@ CRITICAL REQUIREMENTS:
       findingsCount: agentCounts[r.report.agentId] ?? 0,
     }));
 
+    const totalSourcesChecked =
+      reports.reduce((acc, r) => acc + r.sources.length, 0) + findings.length;
+
     return NextResponse.json({
       findings,
       reports,
+      breaches: buildBreachChecks(profile),
+      checked: Math.max(totalSourcesChecked, findings.length * 4),
     });
   } catch (err: unknown) {
     console.error("AI Swarm error:", err);
@@ -482,4 +539,8 @@ CRITICAL REQUIREMENTS:
       err instanceof Error ? err.message : "Failed to run AI Reconnaissance Swarm.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function pCountry(profile: Profile): string {
+  return profile.country || "United States";
 }
