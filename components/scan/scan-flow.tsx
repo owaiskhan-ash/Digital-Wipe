@@ -446,13 +446,20 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
           </label>
 
           {error ? (
-            <p
+            <div
               role="alert"
-              className="flex items-start gap-2 rounded-xl border border-clay/25 bg-clay-soft px-4 py-3 text-xs leading-relaxed text-clay"
+              className="rounded-xl border border-clay/30 bg-clay-soft p-4 text-xs leading-relaxed text-clay space-y-1.5"
             >
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
-              {error}
-            </p>
+              <div className="flex items-start gap-2 font-medium">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={1.8} aria-hidden />
+                <span>{error}</span>
+              </div>
+              {/gemini|key|api key/i.test(error) && (
+                <p className="pl-6 text-[0.72rem] text-ink-soft">
+                  Tip: Live Google Search grounding uses Gemini to search the live web. Make sure a valid key is set in your <strong>Settings &gt; Secrets</strong> panel.
+                </p>
+              )}
+            </div>
           ) : null}
         </div>
 

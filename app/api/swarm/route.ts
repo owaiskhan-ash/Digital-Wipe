@@ -153,60 +153,21 @@ function maskKey(key?: string): string | null {
   return `${key.slice(0, 6)}...${key.slice(-4)}`;
 }
 
-function getGeminiClient(apiKey: string, useVertex: boolean): GoogleGenAI {
+function getGeminiClient(apiKey: string): GoogleGenAI {
   return new GoogleGenAI({
     apiKey,
-    vertexai: useVertex,
-    ...(useVertex ? { location: "global" } : {}),
     httpOptions: {
       timeout: GEMINI_TIMEOUT_MS,
-      headers: { "User-Agent": "untrace-scan" },
+      headers: { "User-Agent": "aistudio-build" },
     },
   });
 }
 
-const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-2.5-flash"];
-const PREFERRED_MODELS = [
-  "gemini-flash-latest",
-  "gemini-flash-lite-latest",
+const CANDIDATE_MODELS = [
   "gemini-3.8-flash",
+  "gemini-flash-latest",
   "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
 ];
-const modelCache = new Map<string, string[]>();
-
-/** Asks the API which models this key can actually call, then orders them. */
-async function listUsableModels(ai: GoogleGenAI, cacheKey: string): Promise<string[]> {
-  const cached = modelCache.get(cacheKey);
-  if (cached) return cached;
-
-  let resolved: string[] = [];
-  try {
-    const pager = await ai.models.list();
-    const names: string[] = [];
-    for await (const model of pager) {
-      const name = (model.name ?? "").replace(/^models\//, "");
-      if (!name) continue;
-      if (/embedding|embed|aqa|imagen|veo|gemma|learnlm/i.test(name)) continue;
-      const actions = model.supportedActions;
-      if (Array.isArray(actions) && actions.length > 0 && !actions.includes("generateContent")) {
-        continue;
-      }
-      names.push(name);
-    }
-    const preferred = PREFERRED_MODELS.filter((model) => names.includes(model));
-    const remaining = names
-      .filter((model) => /flash/i.test(model) && !preferred.includes(model))
-      .sort();
-    resolved = [...preferred, ...remaining].slice(0, 3);
-  } catch {
-    resolved = [];
-  }
-
-  const finalList = resolved.length > 0 ? resolved : [...FALLBACK_MODELS];
-  modelCache.set(cacheKey, finalList);
-  return finalList;
-}
 
 function errorText(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -228,19 +189,19 @@ function describeSearchError(err: unknown): string {
   const text = errorText(err);
 
   if (/API_KEY_INVALID|API key not valid|invalid api key/i.test(text)) {
-    return "The Gemini API key was rejected as invalid. Create a key in Google AI Studio and set GEMINI_API_KEY in Vercel, then redeploy.";
+    return "The Gemini API key was rejected as invalid. Please check or select a valid key in Settings > Secrets.";
   }
   if (isAuthError(err)) {
-    return "The Gemini API rejected this key for the Developer API. Use an AI Studio key that starts with AIza, or run the request against Vertex instead.";
+    return "The Gemini API rejected this key. Please verify your API key in Settings > Secrets.";
   }
   if (/RESOURCE_EXHAUSTED|quota|rate limit/i.test(text)) {
-    return "The Gemini API quota for this key is exhausted. Use a key with billing enabled, or wait for the quota to reset.";
+    return "The Gemini API quota for this key is exhausted. Please try again later or use a billing-enabled key.";
   }
   if (/grounding|google ?search|tool/i.test(text) && /not supported|unsupported|invalid/i.test(text)) {
     return "This model rejected the Google Search tool, so grounding cannot run with it. Pick a model that supports search grounding, or rely on the keyed search provider.";
   }
   if (/404|not found|NOT_FOUND/i.test(text)) {
-    return "No Gemini model was available for this key. Check that the Generative Language API is enabled for the project that owns the key.";
+    return "No compatible Gemini model was available. Generative Language API may need to be enabled for your project.";
   }
   if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(text)) {
     return `The Gemini API could not be reached from the server (${text.slice(0, 120)}).`;
@@ -251,48 +212,35 @@ function describeSearchError(err: unknown): string {
 type GenerateOutcome = {
   response: unknown;
   model: string;
-  endpoint: "developer" | "vertex";
+  endpoint: string;
 };
 
 /**
- * Runs a Gemini call against the Developer API first, then Vertex (express mode)
- * when the key is rejected there. Both paths use the same key.
+ * Runs a Gemini call using the recommended models.
  */
 async function generateWithFallback(
   apiKey: string,
   contents: string,
   config: Record<string, unknown>
 ): Promise<GenerateOutcome> {
-  const attempts: Array<{ endpoint: "developer" | "vertex"; ai: GoogleGenAI }> = [
-    { endpoint: "developer", ai: getGeminiClient(apiKey, false) },
-    { endpoint: "vertex", ai: getGeminiClient(apiKey, true) },
-  ];
-
+  const ai = getGeminiClient(apiKey);
   let firstError: unknown = null;
 
-  for (const attempt of attempts) {
-    const models = await listUsableModels(attempt.ai, attempt.endpoint);
-    let authFailed = false;
-
-    for (const model of models) {
-      try {
-        const response = await attempt.ai.models.generateContent({
-          model,
-          contents,
-          config,
-        });
-        return { response, model, endpoint: attempt.endpoint };
-      } catch (err) {
-        firstError = firstError ?? err;
-        if (isAuthError(err)) {
-          authFailed = true;
-          break;
-        }
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config,
+      });
+      return { response, model, endpoint: "developer" };
+    } catch (err) {
+      firstError = firstError ?? err;
+      if (isAuthError(err)) {
+        // If the API key is invalid or blocked, trying another model will fail identically
+        break;
       }
     }
-
-    if (attempt.endpoint === "vertex" || authFailed) continue;
-    throw firstError;
   }
 
   throw firstError ?? new Error("No Gemini model answered the request.");
@@ -512,6 +460,30 @@ async function extractGroundedMentions(
       snippet:
         combinedSupport ||
         `Google Search result on ${domain} mentioning "${targetValue}".`,
+    });
+  }
+
+  // 3. Extract any markdown links or plain URLs mentioned in the response text
+  const textUrls = [
+    ...text.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g),
+    ...text.matchAll(/(?:^|\s)(https?:\/\/[^\s"'<>()]+)/g),
+  ];
+  for (const match of textUrls) {
+    const rawUrl = (match[2] || match[1] || "").trim();
+    if (!rawUrl.startsWith("http")) continue;
+    const domain = domainFromUrl(rawUrl);
+    if (!isValidPublicDomain(domain)) continue;
+
+    const title = match[2] ? match[1].trim() : domain;
+    const dedupKey = `${rawUrl.toLowerCase()}::${title.toLowerCase()}`;
+    if (seenUrls.has(dedupKey)) continue;
+    seenUrls.add(dedupKey);
+
+    mentions.push({
+      title,
+      url: rawUrl,
+      domain,
+      snippet: `Web page on ${domain} identified by search mentioning "${targetValue}".`,
     });
   }
 
@@ -878,7 +850,7 @@ export async function GET(request: Request) {
     scanEngineReady: Boolean(apiKey),
     geminiActive: null as boolean | null,
     engine: [
-      apiKey ? "Gemini Search Grounding (unverified, run ?selftest=1)" : null,
+      apiKey ? "Gemini Search Grounding" : null,
       ...keyedProviders,
       "DuckDuckGo",
     ]
@@ -896,10 +868,10 @@ export async function GET(request: Request) {
     searchProviders: providers,
     instruction: apiKey
       ? "A key is configured. Add ?selftest=1 to confirm the API accepts it."
-      : "Set GEMINI_API_KEY in Vercel (Production and Preview), then redeploy.",
+      : "Configure GEMINI_API_KEY in Settings > Secrets.",
     fallbackNote:
       keyedProviders.length === 0
-        ? "No keyed search provider is configured, so the fallback is DuckDuckGo, which blocks datacenter traffic. Set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY."
+        ? "DuckDuckGo is available as public fallback. For guaranteed server search from cloud IPs, set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY."
         : null,
   };
 
@@ -1086,10 +1058,11 @@ export async function POST(request: Request) {
   const allMentions: GroundedMention[] = [];
   const errors: string[] = [];
   let engine: string | null = null;
+  let searchCompleted = false;
 
   // 1. Grounded Google Search through Gemini
   if (!apiKey) {
-    errors.push("GEMINI_API_KEY is not set, so the grounded search did not run.");
+    errors.push("GEMINI_API_KEY is not set in Settings > Secrets, so live Google Search grounding did not run.");
   } else {
     try {
       const groundedPrompt = buildGroundedPrompt(mode, targetValue);
@@ -1097,31 +1070,41 @@ export async function POST(request: Request) {
       const grounded = await generateGroundedSearch(apiKey, groundedPrompt);
       const mentions = await extractGroundedMentions(grounded.response, targetValue);
 
+      searchCompleted = true;
+      engine = `Google Search (Gemini ${grounded.model})`;
+
       if (mentions.length > 0) {
         allMentions.push(...mentions);
-        engine = `Gemini ${grounded.model}`;
       }
     } catch (err) {
-      console.error("Grounded search failed:", err);
+      console.error("Grounded Google Search failed:", err);
       errors.push(describeSearchError(err));
     }
   }
 
-  // 2. Open web search when the grounded search produced nothing
-  if (allMentions.length === 0 && remainingMs(deadline) > 4000) {
+  // 2. Open web search fallback when grounded search returned nothing or failed
+  if (allMentions.length === 0 && (!searchCompleted || remainingMs(deadline) > 6000)) {
     const web = await searchOpenWeb(mode, targetValue, deadline);
     if (web.mentions.length > 0) {
       allMentions.push(...web.mentions);
       engine = web.provider ?? engine;
+      searchCompleted = true;
+    } else if (web.provider) {
+      searchCompleted = true;
+      engine = engine ?? web.provider;
     }
-    errors.push(...web.errors);
+    if (web.errors.length > 0) {
+      errors.push(...web.errors);
+    }
   }
 
-  // 3. Nothing searched at all is an error, not an empty report
-  if (allMentions.length === 0 && errors.length > 0) {
+  // 3. If no search engine could run at all, report the configuration error
+  if (!searchCompleted && allMentions.length === 0) {
     return NextResponse.json(
       {
-        error: `No search could be completed, so nothing was checked. ${errors[0]}`,
+        error:
+          errors[0] ||
+          "No search engine could be reached to check this identifier. Please verify your GEMINI_API_KEY in Settings > Secrets.",
         details: errors,
       },
       { status: 502, headers: { "Cache-Control": "no-store" } }
