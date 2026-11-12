@@ -263,7 +263,21 @@ export default function HomePage() {
       <main>
         {/* Hero */}
         <section className="relative overflow-hidden">
-          <div data-reveal className="container-page grid items-center gap-14 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-24">
+          {/* A wash of paper and sage with the ghost of a sweep in it: the
+              background is felt, not read, so the type keeps the page. */}
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            <Image
+              src="/hero-texture.jpg"
+              alt=""
+              fill
+              sizes="100vw"
+              className="object-cover object-[76%_16%] opacity-75 sm:opacity-90"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-paper via-paper/60 to-paper/0" />
+            <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-paper to-paper/0" />
+          </div>
+
+          <div data-reveal className="container-page relative grid items-center gap-14 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-24">
             <div className="animate-fade-blur">
               <SectionLabel>AI-powered personal data removal</SectionLabel>
 
