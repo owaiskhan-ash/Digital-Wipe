@@ -1,4 +1,14 @@
 import { NextResponse } from "next/server";
+import {
+  domainFromTitle,
+  domainFromUrl,
+  isGoogleRedirect,
+  isValidPublicDomain,
+  normaliseUrl,
+  parseJsonArrayLoose,
+  shapeModelItems,
+  type DroppedTally,
+} from "@/lib/grounding";
 import { GoogleGenAI } from "@google/genai";
 import { normaliseProfile, type RawProfileInput } from "@/lib/profile";
 import type {
@@ -87,59 +97,6 @@ function checkRateLimit(request: Request): {
     remaining: Math.max(0, RATE_LIMIT_MAX_REQUESTS - recent.length),
     retryAfterSeconds: 0,
   };
-}
-
-const RESERVED_OR_FAKE_DOMAINS = new Set([
-  "example.com",
-  "example.org",
-  "example.net",
-  "example.edu",
-  "test.com",
-  "yourdomain.com",
-  "domain.com",
-  "company.com",
-  "website.com",
-  "localhost",
-  "invalid",
-]);
-
-/** Hosts that are search engines rather than the pages themselves. */
-const SEARCH_ENGINE_HOSTS = [
-  "duckduckgo.com",
-  "google.com",
-  "google.co.in",
-  "google.co.uk",
-  "bing.com",
-  "yahoo.com",
-  "search.brave.com",
-  "serper.dev",
-  "tavily.com",
-];
-
-function isValidPublicDomain(domain: string): boolean {
-  const clean = domain.toLowerCase().trim();
-  if (!clean || !clean.includes(".")) return false;
-  if (clean.endsWith(".web") || clean.endsWith(".invalid") || clean.endsWith(".local")) {
-    return false;
-  }
-  if (RESERVED_OR_FAKE_DOMAINS.has(clean)) return false;
-  for (const reserved of RESERVED_OR_FAKE_DOMAINS) {
-    if (clean.endsWith(`.${reserved}`)) return false;
-  }
-  if (SEARCH_ENGINE_HOSTS.some((host) => clean === host || clean.endsWith(`.${host}`))) {
-    return false;
-  }
-  return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(clean);
-}
-
-function domainFromUrl(url: string): string {
-  return url
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split("/")[0]
-    .split("?")[0]
-    .trim();
 }
 
 /**
@@ -306,7 +263,9 @@ async function generateGroundedSearch(
   return generateWithFallback(
     apiKey,
     prompt,
-    { tools: [{ googleSearch: {} }], ...FAST_CONFIG },
+    // A long list of pages is the point of this call: 4096 tokens cut some
+    // answers off mid-array, and a half-written row is a page not shown.
+    { tools: [{ googleSearch: {} }], ...FAST_CONFIG, maxOutputTokens: 8192 },
     deadline
   );
 }
@@ -395,48 +354,20 @@ type GroundedMention = {
  * off at the token limit, so a strict parse is not enough: when the whole array
  * will not parse, every top-level object that does is kept.
  */
-function parseJsonArrayLoose(text: string): unknown[] {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = (fenced ? fenced[1] : text).trim();
-  const bracketed = body.slice(body.indexOf("["), body.lastIndexOf("]") + 1);
-
-  for (const candidate of [body, bracketed]) {
-    if (!candidate.trim()) continue;
-    try {
-      const parsed = JSON.parse(candidate);
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed && typeof parsed === "object") {
-        const shaped = parsed as { results?: unknown[]; findings?: unknown[] };
-        if (Array.isArray(shaped.results)) return shaped.results;
-        if (Array.isArray(shaped.findings)) return shaped.findings;
-      }
-    } catch {
-      // Truncated or wrapped: fall through to the object scan below.
-    }
-  }
-
-  const items: unknown[] = [];
-  for (const match of body.matchAll(/\{[^{}]*\}/g)) {
-    try {
-      items.push(JSON.parse(match[0]));
-    } catch {
-      // A partial object at the cut-off point: skip it alone.
-    }
-  }
-  return items;
-}
 
 /**
  * Extracts structured mentions from Gemini's text response and from Google
- * Search grounding chunks. Chunks are kept when the redirect resolves, and
- * identified by title only when the title carries a domain.
+ * Search grounding chunks. Nothing the search found is thrown away silently:
+ * rows that cannot be shown are counted, so "found 12, showing 8" can be
+ * explained instead of guessed at.
  */
 async function extractGroundedMentions(
   response: unknown,
   targetValue: string
-): Promise<GroundedMention[]> {
+): Promise<{ mentions: GroundedMention[]; dropped: DroppedTally }> {
   const mentions: GroundedMention[] = [];
   const seenUrls = new Set<string>();
+  const dropped: DroppedTally = { noUrl: 0, unresolved: 0, duplicate: 0, total: 0 };
 
   const respObj = response as {
     text?: string;
@@ -457,66 +388,23 @@ async function extractGroundedMentions(
 
   // 1. Read the list the model wrote, even when the answer was cut short.
   const items = parseJsonArrayLoose(text);
-  const staged: Array<{
-    title: string;
-    url: string;
-    snippet: string;
-    contactEmail?: string;
-  }> = [];
-
-  for (const item of items) {
-    if (!item || typeof item !== "object") continue;
+  const itemUrls = items.map((item) => {
+    if (!item || typeof item !== "object") return "";
     const record = item as Record<string, unknown>;
-
-    let rawUrl = String(record.url || record.inspectUrl || record.removalUrl || "").trim();
-    // A model that answers "spokeo.com/profile/123" is still pointing at a real
-    // page; only a bare placeholder is worth discarding.
-    if (!rawUrl.startsWith("http") && /^[a-z0-9-]+(\.[a-z0-9-]+)+\//i.test(rawUrl)) {
-      rawUrl = `https://${rawUrl}`;
-    }
-    if (!rawUrl.startsWith("http")) continue;
-
-    const title = String(record.title || record.broker || "").trim();
-    staged.push({
-      title,
-      url: rawUrl,
-      // A page with a title and a URL is a finding even when the model left the
-      // snippet out; dropping it would hide a real listing.
-      snippet:
-        String(record.snippet || record.summary || "").trim() ||
-        `This page publishes "${targetValue}".`,
-      contactEmail:
-        typeof record.contactEmail === "string" && record.contactEmail.includes("@")
-          ? record.contactEmail.trim()
-          : undefined,
-    });
-  }
+    return normaliseUrl(String(record.url || record.inspectUrl || record.removalUrl || "")) ?? "";
+  });
 
   // Gemini writes its sources as grounding redirects, not as the page URL.
-  // Follow them in parallel; a redirect that will not resolve is not a link
-  // anyone can read, so it is dropped rather than shown as a Google address.
-  const resolvedUrls = await Promise.all(
-    staged.map((entry) => resolveRedirectUrl(entry.url))
+  const resolvedItemUrls = await Promise.all(
+    itemUrls.map(async (url) => (url ? await resolveRedirectUrl(url) : ""))
   );
 
-  staged.forEach((entry, index) => {
-    const url = resolvedUrls[index];
-    const domain = domainFromUrl(url);
-    if (!isValidPublicDomain(domain)) return;
-
-    const title = entry.title || domain;
-    const dedupKey = `${url.toLowerCase()}::${title.toLowerCase()}`;
-    if (seenUrls.has(dedupKey)) return;
-    seenUrls.add(dedupKey);
-
-    mentions.push({
-      title,
-      url,
-      domain,
-      snippet: entry.snippet,
-      contactEmail: entry.contactEmail,
-    });
-  });
+  const shaped = shapeModelItems(items, resolvedItemUrls, targetValue, seenUrls);
+  mentions.push(...shaped.mentions);
+  dropped.noUrl += shaped.dropped.noUrl;
+  dropped.unresolved += shaped.dropped.unresolved;
+  dropped.duplicate += shaped.dropped.duplicate;
+  dropped.total += shaped.dropped.total;
 
   // 2. Extract Google Search grounding chunks
   const metadata = respObj?.candidates?.[0]?.groundingMetadata;
@@ -533,21 +421,27 @@ async function extractGroundedMentions(
 
   for (let idx = 0; idx < chunks.length; idx++) {
     const chunk = chunks[idx];
-    const resolvedUri = resolvedChunkUrls[idx] || chunk?.web?.uri || "";
+    const resolvedUri = normaliseUrl(resolvedChunkUrls[idx] || chunk?.web?.uri || "");
     const rawTitle = chunk?.web?.title?.trim() || "";
     if (!resolvedUri) continue;
 
-    let domain = "";
-    if (!resolvedUri.includes("vertexaisearch.cloud.google.com")) {
-      domain = domainFromUrl(resolvedUri);
-    } else {
-      const titleDomainMatch = rawTitle.match(/([a-z0-9-]+\.[a-z.]{2,})/i);
-      if (titleDomainMatch) {
-        domain = titleDomainMatch[1].toLowerCase().replace(/^www\./, "");
+    let domain = domainFromUrl(resolvedUri);
+    if (isGoogleRedirect(resolvedUri) || !isValidPublicDomain(domain)) {
+      const fromTitle = domainFromTitle(rawTitle);
+      if (!fromTitle) {
+        dropped.total += 1;
+        dropped.unresolved += 1;
+        continue;
       }
+      domain = fromTitle;
     }
 
-    if (!isValidPublicDomain(domain)) continue;
+    const dedupKey = resolvedUri.toLowerCase();
+    if (seenUrls.has(dedupKey)) {
+      dropped.duplicate += 1;
+      continue;
+    }
+    seenUrls.add(dedupKey);
 
     const matchingSupportTexts = supports
       .filter((support) => support.groundingChunkIndices?.includes(idx))
@@ -555,9 +449,6 @@ async function extractGroundedMentions(
       .filter(Boolean);
 
     const combinedSupport = matchingSupportTexts.join(" · ");
-    const dedupKey = `${resolvedUri.toLowerCase()}::${(rawTitle || domain).toLowerCase()}`;
-    if (seenUrls.has(dedupKey)) continue;
-    seenUrls.add(dedupKey);
 
     mentions.push({
       title: rawTitle || domain,
@@ -575,14 +466,17 @@ async function extractGroundedMentions(
     ...text.matchAll(/(?:^|\s)(https?:\/\/[^\s"'<>()]+)/g),
   ];
   for (const match of textUrls) {
-    const rawUrl = (match[2] || match[1] || "").trim();
-    if (!rawUrl.startsWith("http")) continue;
+    const rawUrl = normaliseUrl((match[2] || match[1] || "").trim());
+    if (!rawUrl) continue;
     const domain = domainFromUrl(rawUrl);
     if (!isValidPublicDomain(domain)) continue;
 
     const title = match[2] ? match[1].trim() : domain;
-    const dedupKey = `${rawUrl.toLowerCase()}::${title.toLowerCase()}`;
-    if (seenUrls.has(dedupKey)) continue;
+    const dedupKey = rawUrl.toLowerCase();
+    if (seenUrls.has(dedupKey)) {
+      dropped.duplicate += 1;
+      continue;
+    }
     seenUrls.add(dedupKey);
 
     mentions.push({
@@ -593,8 +487,9 @@ async function extractGroundedMentions(
     });
   }
 
-  return mentions;
+  return { mentions, dropped };
 }
+
 
 function decodeHtmlEntities(str: string): string {
   return str
@@ -989,7 +884,7 @@ export async function GET(request: Request) {
           candidates?: Array<{ groundingMetadata?: { groundingChunks?: unknown[] } }>;
         };
         const text = shaped?.text ?? "";
-        const mentions = await extractGroundedMentions(grounded.response, sample);
+        const extracted = await extractGroundedMentions(grounded.response, sample);
         dryrun = {
           ok: true,
           model: grounded.model,
@@ -999,8 +894,9 @@ export async function GET(request: Request) {
             shaped?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0,
           textChars: text.length,
           textPreview: text.slice(0, 300),
-          parsedMentions: mentions.length,
-          domains: mentions.slice(0, 5).map((mention) => mention.domain),
+          parsedMentions: extracted.mentions.length,
+          dropped: extracted.dropped,
+          domains: extracted.mentions.slice(0, 5).map((mention) => mention.domain),
         };
       } catch (err) {
         console.error("Dry run failed:", err);
@@ -1100,6 +996,8 @@ export async function POST(request: Request) {
   const apiKey = resolveGeminiApiKey();
   const allMentions: GroundedMention[] = [];
   const errors: string[] = [];
+  // Rows the search cited but that could not be shown, by reason.
+  let dropped: DroppedTally = { noUrl: 0, unresolved: 0, duplicate: 0, total: 0 };
   let engine: string | null = null;
   let searchCompleted = false;
 
@@ -1131,11 +1029,12 @@ export async function POST(request: Request) {
           buildGroundedPrompt(mode, targetValue),
           deadline
         );
-        const mentions = await extractGroundedMentions(grounded.response, targetValue);
+        const extracted = await extractGroundedMentions(grounded.response, targetValue);
 
         searchCompleted = true;
         engine = engine ?? `Google Search (Gemini ${grounded.model})`;
-        allMentions.push(...mentions);
+        allMentions.push(...extracted.mentions);
+        dropped = extracted.dropped;
       } catch (err) {
         console.error("Grounded Google Search failed:", err);
         errors.push(describeSearchError(err));
@@ -1257,6 +1156,11 @@ export async function POST(request: Request) {
       breaches,
       checked: findings.length,
       engine,
+      diagnostics: {
+        cited: findings.length + dropped.total,
+        shown: findings.length,
+        dropped,
+      },
       ...(partial ? { warning: errors.join(" ") } : {}),
     },
     {
