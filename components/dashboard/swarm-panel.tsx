@@ -371,7 +371,7 @@ export function SwarmPanel({
         </div>
 
         {activeList.length > 0 ? (
-          <div className="grid gap-3">
+          <div className="grid gap-3 xl:grid-cols-2">
             {activeList.map((finding) => {
               const status = statuses[finding.id];
               return (

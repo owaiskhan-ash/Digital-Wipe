@@ -229,6 +229,16 @@
     }
   }
 
+  /* A desktop has the room, so the page uses it: nine tenths of the window,
+     capped only where a line would get too long to read. Phones and tablets
+     keep the same comfortable measure. */
+  @media (min-width: 1280px) {
+    .container-page {
+      width: 90%;
+      max-width: 120rem;
+    }
+  }
+
   .btn {
     display: inline-flex;
     align-items: center;

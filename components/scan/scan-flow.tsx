@@ -70,20 +70,43 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const [status, setStatus] = useState<"idle" | "running" | "error">("idle");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(0);
+  const progressRef = useRef(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [finishing, setFinishing] = useState(false);
+  const [pagesFound, setPagesFound] = useState(0);
   const inFlight = useRef<{ controller: AbortController; cancelled: boolean } | null>(null);
 
+  /**
+   * The wait, as an honest curve.
+   *
+   * The old one sprinted to 85 and then parked on 95, which turns a scan that
+   * takes thirty seconds into a screen that has stopped working and then jumps.
+   * This one is a function of elapsed time: it starts briskly, keeps moving by
+   * a little for as long as the wait lasts, and stops short of 100 because the
+   * server — not a timer — is what finishes the scan. The sweep to 100 is a
+   * separate, deliberate moment.
+   */
+  useEffect(() => {
+    if (status !== "running" || finishing) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      const seconds = (Date.now() - startedAt) / 1000;
+      setElapsed(seconds);
+      const estimate = 96 * (1 - Math.exp(-seconds / 11));
+      setProgress((current) => {
+        const next = Math.max(current, estimate);
+        progressRef.current = next;
+        return next;
+      });
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [status, finishing]);
+
+  // The form is tall and the button sits at its foot, so a scan would otherwise
+  // open halfway down its own progress screen.
   useEffect(() => {
     if (status !== "running") return;
-    const timer = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= 95) return current;
-        if (current < 85) {
-          return Math.min(85, current + 4.5 + Math.random() * 3.5);
-        }
-        return Math.min(95, current + 0.8);
-      });
-    }, 200);
-    return () => window.clearInterval(timer);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, [status]);
 
   // Abort an unfinished request when the page goes away, so a late response
@@ -102,6 +125,10 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       inFlight.current = null;
     }
     setStatus("idle");
+    setFinishing(false);
+    setPagesFound(0);
+    setElapsed(0);
+    progressRef.current = 0;
     setProgress(0);
   };
 
@@ -127,7 +154,11 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
     setError("");
     setStatus("running");
-    setProgress(15);
+    setFinishing(false);
+    setPagesFound(0);
+    setElapsed(0);
+    progressRef.current = 12;
+    setProgress(12);
 
     const controller = new AbortController();
     const entry = { controller, cancelled: false };
@@ -206,16 +237,38 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         demo: false,
       };
 
-      setProgress(100);
       saveScan(scanResult);
-      window.setTimeout(() => {
-        router.push(`/dashboard?mode=${scanMode}`);
-      }, 200);
+
+      // Done, and say so: the arc sweeps to 100, the ring becomes a tick, and
+      // the page has a beat to show what was found before the report opens.
+      setPagesFound(mergedFindings.length);
+      setFinishing(true);
+
+      const from = progressRef.current;
+      const sweepStartedAt = performance.now();
+      const sweep = () => {
+        const t = Math.min(1, (performance.now() - sweepStartedAt) / 850);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const next = from + (100 - from) * eased;
+        progressRef.current = next;
+        setProgress(next);
+        if (t < 1) {
+          window.requestAnimationFrame(sweep);
+        } else {
+          window.setTimeout(() => {
+            if (entry.cancelled) return;
+            router.push(`/dashboard?mode=${scanMode}`);
+          }, 800);
+        }
+      };
+      window.requestAnimationFrame(sweep);
     } catch (cause) {
       // Cancelled by the user: the form is already back, say nothing.
       if (entry.cancelled) return;
 
       setStatus("error");
+      setFinishing(false);
+      progressRef.current = 0;
       setProgress(0);
       const isTimeout = controller.signal.aborted;
       setError(
@@ -235,6 +288,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     const stages = scanMode === "phone" ? PHONE_STAGES : EMAIL_STAGES;
     const stageIndex = Math.min(stages.length - 1, Math.floor(progress / 33.4));
     const currentStage = stages[stageIndex];
+    const done = finishing && progress >= 99.5;
     const targetDisplay = scanMode === "phone" ? phone.trim() : email.trim();
 
     return (
@@ -252,10 +306,23 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                 ) : (
                   <Mail className="size-3.5 animate-pulse text-moss" />
                 )}
-                {scanMode === "phone" ? "Phone Number Scan Active" : "Email Scan Active"}
+                {done
+                  ? "Scan complete"
+                  : scanMode === "phone"
+                    ? "Phone Number Scan Active"
+                    : "Email Scan Active"}
               </p>
               <h2 className="mt-2 font-display text-[1.6rem] leading-tight md:text-[1.9rem]">
-                Finding every web page mentioning {targetDisplay}
+                {done ? (
+                  <>
+                    {pagesFound === 0
+                      ? "No public page found mentioning"
+                      : `${pagesFound} ${pagesFound === 1 ? "page" : "pages"} found mentioning`}{" "}
+                    {targetDisplay}
+                  </>
+                ) : (
+                  <>Finding every web page mentioning {targetDisplay}</>
+                )}
               </h2>
             </div>
           </div>
@@ -264,29 +331,48 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
             progress={progress}
             stages={stages}
             activeIndex={stageIndex}
+            complete={done}
           />
           <p className="sr-only" aria-live="polite">
             {currentStage.label}
           </p>
 
           <div className="mt-5 flex items-center justify-between gap-3 text-xs text-muted">
-            <span className="min-w-0">
-              <span className="sm:hidden">Searching the live web…</span>
-              <span className="hidden sm:inline">Live web search in progress</span>
+            <span className="min-w-0 tabular-nums">
+              {done ? (
+                <span className="inline-flex items-center gap-1.5 font-medium text-moss-deep">
+                  <Check className="size-3.5" strokeWidth={2.4} aria-hidden />
+                  Compiling your report…
+                </span>
+              ) : (
+                <>
+                  <span className="sm:hidden">
+                    Searching the live web… {Math.floor(elapsed)}s
+                  </span>
+                  <span className="hidden sm:inline">
+                    Live web search in progress · {Math.floor(elapsed)}s elapsed
+                  </span>
+                </>
+              )}
             </span>
-            <button
-              type="button"
-              onClick={cancelScan}
-              className="shrink-0 text-muted underline underline-offset-2 transition-colors hover:text-ink"
-            >
-              Cancel scan
-            </button>
+            {!done ? (
+              <button
+                type="button"
+                onClick={cancelScan}
+                disabled={done}
+                className="shrink-0 text-muted underline underline-offset-2 transition-colors hover:text-ink disabled:opacity-40"
+              >
+                Cancel scan
+              </button>
+            ) : (
+              <span className="shrink-0 text-muted">Opening your report…</span>
+            )}
           </div>
 
           <ol className="mt-8 space-y-4">
             {stages.map((stage, index) => {
-              const done = progress >= (index + 1) * 33.3;
-              const active = index === stageIndex && !done;
+              const stepDone = finishing || progress >= (index + 1) * 33.3;
+              const active = index === stageIndex && !stepDone;
               return (
                 <li
                   key={stage.label}
@@ -296,14 +382,14 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                   <span
                     className={[
                       "mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border",
-                      done
+                      stepDone
                         ? "border-moss bg-moss text-paper"
                         : active
                           ? "border-moss bg-moss-soft text-moss"
                           : "border-line bg-surface text-line-strong",
                     ].join(" ")}
                   >
-                    {done ? (
+                    {stepDone ? (
                       <Check className="size-3.5" strokeWidth={2.4} aria-hidden />
                     ) : active ? (
                       <Loader2 className="size-3.5 animate-spin" strokeWidth={2} aria-hidden />
@@ -315,7 +401,7 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                     <p
                       className={[
                         "text-sm transition-colors",
-                        done || active ? "text-ink font-medium" : "text-muted",
+                        stepDone || active ? "text-ink font-medium" : "text-muted",
                       ].join(" ")}
                     >
                       {stage.label}
@@ -334,9 +420,13 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
               Current Step
             </p>
             <p className="mt-3 font-display text-[1.55rem] leading-tight">
-              {currentStage.label}
+              {done ? "Report ready" : currentStage.label}
             </p>
-            <p className="mt-1.5 text-xs text-muted">{currentStage.detail}</p>
+            <p className="mt-1.5 text-xs text-muted">
+              {done
+                ? `${pagesFound} ${pagesFound === 1 ? "page" : "pages"} listed. Taking you to the dashboard.`
+                : currentStage.detail}
+            </p>
 
             <div className="mt-7 rounded-xl border border-line bg-mist/60 p-4 space-y-2 text-xs">
               <div className="flex items-center justify-between text-ink-soft">
@@ -361,6 +451,24 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
                   Google Search Grounding + Live Page Scraper
                 </span>
               </div>
+            </div>
+
+            <div className="mt-auto pt-8" hidden={done}>
+              <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
+                While we search
+              </p>
+              <ul className="mt-4 space-y-3 text-xs text-ink-soft">
+                {[
+                  "Only public pages: nothing behind a login is read.",
+                  "Nothing is sent to anyone until you review the letter.",
+                  "Cancel any time — the search stops with you.",
+                ].map((line) => (
+                  <li key={line} className="flex items-start gap-2">
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-moss" strokeWidth={2.4} aria-hidden />
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </aside>
