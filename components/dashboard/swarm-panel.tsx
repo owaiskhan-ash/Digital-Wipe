@@ -136,6 +136,7 @@ export function SwarmPanel({
       const data = (await response.json().catch(() => ({}))) as {
         findings?: Finding[];
         reports?: SwarmAgentReport[];
+        diagnostics?: { cited?: number; shown?: number; dropped?: { total?: number } };
         error?: string;
       };
 
@@ -151,11 +152,14 @@ export function SwarmPanel({
         modeToRun,
         modeToRun === "phone" ? cleanPhone : cleanEmail
       );
+      // Say what was found *and* what could not be shown, so the counts match
+      // the list underneath instead of quietly disagreeing with it.
+      const skipped = data.diagnostics?.dropped?.total ?? 0;
       onToast(
         discovered.length > 0
           ? `Found ${plural(discovered.length, "webpage mention")} for ${
               modeToRun === "phone" ? cleanPhone : cleanEmail
-            }.`
+            }.${skipped > 0 ? ` ${skipped} more cited no openable page.` : ""}`
           : "Scan completed."
       );
     } catch (err: unknown) {
