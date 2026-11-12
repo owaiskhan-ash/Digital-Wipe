@@ -15,6 +15,13 @@ import { usePathname } from "next/navigation";
  * without any of them having to know its index. A mutation observer picks up
  * blocks that mount later — the report after hydration, a tab switch, a scan's
  * findings — so they get the same entrance instead of appearing flat.
+ *
+ * `data-reveal="now"` means the block animates on arrival whatever the fold
+ * says, and every screen of the app uses it. A report whose rows wait to be
+ * scrolled to is a report that looks like it is missing rows: the count says
+ * seven, the page shows two, and nothing tells the reader the rest are there
+ * but shy. The scroll entrance belongs to the story pages, where a block that
+ * has not been reached yet genuinely has not been looked at.
  */
 export function ScrollReveal() {
   const pathname = usePathname();
@@ -22,14 +29,28 @@ export function ScrollReveal() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
+    // Without the observer nothing could ever be brought back, so nothing is
+    // hidden: every block simply arrives.
+    if (typeof IntersectionObserver === "undefined") {
+      document
+        .querySelectorAll<HTMLElement>("[data-reveal]")
+        .forEach((el) => el.classList.add("reveal-in"));
+      return;
+    }
+
+    const reveal = (el: HTMLElement, animate = true) => {
+      el.classList.remove("reveal-pending");
+      if (animate && !el.classList.contains("reveal-in")) {
+        el.classList.add("reveal-in");
+      }
+      observer.unobserve(el);
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          const el = entry.target as HTMLElement;
-          el.classList.remove("reveal-pending");
-          el.classList.add("reveal-in");
-          observer.unobserve(el);
+          reveal(entry.target as HTMLElement);
         }
       },
       { rootMargin: "0px 0px -6% 0px", threshold: 0.08 }
@@ -59,13 +80,15 @@ export function ScrollReveal() {
           const delay = Math.min(index, 5) * 70;
           if (delay) el.style.animationDelay = `${delay}ms`;
 
-          if (el.getBoundingClientRect().top > viewport * 0.94) {
-            // Not on screen yet: hold it back, let the observer bring it in.
-            el.classList.add("reveal-pending");
-            observer.observe(el);
-          } else {
+          const alwaysAnimate = el.dataset.reveal === "now";
+          if (alwaysAnimate || el.getBoundingClientRect().top <= viewport * 0.94) {
             el.classList.add("reveal-in");
+            return;
           }
+
+          // Below the fold: hold it back, let the observer bring it in.
+          el.classList.add("reveal-pending");
+          observer.observe(el);
         });
       }
     };
@@ -80,7 +103,16 @@ export function ScrollReveal() {
     const mutations = new MutationObserver(schedule);
     mutations.observe(document.body, { childList: true, subtree: true });
 
+    // Paper has no scroll to wait for, and a browser without the observer
+    // would otherwise never show these blocks at all.
+    const showPending = () =>
+      document
+        .querySelectorAll<HTMLElement>(".reveal-pending")
+        .forEach((el) => reveal(el, false));
+    window.addEventListener("beforeprint", showPending);
+
     return () => {
+      window.removeEventListener("beforeprint", showPending);
       observer.disconnect();
       mutations.disconnect();
       if (frame) window.cancelAnimationFrame(frame);

@@ -377,7 +377,7 @@ export function SwarmPanel({
               return (
                 <article
                   key={finding.id}
-                  data-reveal
+                  data-reveal="now"
                   className="card p-5 transition-colors hover:border-line-strong"
                 >
                   <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
