@@ -25,13 +25,13 @@ const SECTIONS = [
     title: "Information You Provide During a Scan",
     body: [
       "When you run a scan, you may provide your full name, city, state/region, country, email addresses, phone numbers, and public usernames. These inputs are used solely to run a live open-web search for pages that publish them, to open those pages and confirm the details appear there, and to resolve the contact address of the site that owns each page.",
-      "If you use Untrace without signing in, your scan report and drafted requests are stored locally in your browser's localStorage (under untrace.state.v1) and can be cleared at any time with a single click.",
+      "A scan requires a Google account, because the scan is the service's only costly action and it is run on your behalf rather than on demand for any visitor. Your scan report and drafted requests are held in your browser's localStorage (under untrace.state.v1) first, and can be cleared at any time with a single click.",
     ],
   },
   {
     title: "Google Sign-In & Cloud Backup (Firebase)",
     body: [
-      "If you choose to sign in with Google, we receive your basic Google profile identifiers (name, email address, and profile avatar URL) via Firebase Authentication.",
+      "Signing in with Google is how a scan starts. Through Firebase Authentication we receive your basic Google profile identifiers (name, email address, and profile avatar URL) and a stable account identifier; we never receive your Google password.",
       "When signed in, your scan reports and removal request tracker are stored in Google Cloud Firestore under your authenticated user ID, protected by strict security rules so that only you can view, update, or delete your records.",
     ],
   },

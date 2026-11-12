@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { scanAuthMessage, verifyScanCaller } from "@/lib/scan-auth";
 import {
   domainFromTitle,
   domainFromUrl,
@@ -940,6 +941,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // A scan needs an account: it spends a grounded search on someone's behalf.
+  // The interface hides the form, but the route is public, so it asks too.
+  const auth = await verifyScanCaller(request);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: scanAuthMessage(auth.reason), code: "auth-required" },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
   const rate = checkRateLimit(request);
   if (!rate.allowed) {
     return NextResponse.json(

@@ -19,6 +19,7 @@ import type {
   SwarmAgentReport,
 } from "@/lib/types";
 import { cn, plural } from "@/lib/utils";
+import { useStore } from "@/lib/store";
 import type { ComposerSeed } from "./composer";
 
 export function SwarmPanel({
@@ -45,6 +46,8 @@ export function SwarmPanel({
   onCompose: (seeds: ComposerSeed[]) => void;
   onToast: (msg: string) => void;
 }) {
+  const { user, signIn } = useStore();
+  const [signingIn, setSigningIn] = useState(false);
   const [activeMode, setActiveMode] = useState<"phone" | "email">(initialMode);
   const [running, setRunning] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -99,6 +102,16 @@ export function SwarmPanel({
       (!f.matchType && !phoneFindings.includes(f))
   );
 
+  const handleSignIn = async () => {
+    setSigningIn(true);
+    setError(null);
+    try {
+      await signIn();
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
   const runScan = async (modeToRun: "phone" | "email") => {
     const cleanPhone = phoneInput.trim();
     const cleanEmail = emailInput.trim();
@@ -109,6 +122,20 @@ export function SwarmPanel({
     }
     if (modeToRun === "email" && !/\S+@\S+\.\S+/.test(cleanEmail)) {
       setError("Please enter a valid email address.");
+      return;
+    }
+
+    // Same rule as the scan page: no account, no scan.
+    if (!user) {
+      setError("Sign in with Google to run a scan.");
+      return;
+    }
+
+    let token: string;
+    try {
+      token = await user.getIdToken();
+    } catch {
+      setError("Could not confirm your sign-in. Try again in a moment.");
       return;
     }
 
@@ -123,7 +150,10 @@ export function SwarmPanel({
     try {
       const response = await fetch("/api/swarm", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         signal: controller.signal,
         body: JSON.stringify({
           mode: modeToRun,
@@ -304,8 +334,9 @@ export function SwarmPanel({
             </div>
 
             <button
-              type="submit"
-              disabled={running}
+              type={user ? "submit" : "button"}
+              onClick={user ? undefined : handleSignIn}
+              disabled={running || signingIn}
               className="btn btn-primary shrink-0 flex items-center gap-2"
             >
               {running ? (
@@ -313,10 +344,19 @@ export function SwarmPanel({
                   <Loader2 className="size-4 animate-spin" />
                   Searching Google for Web Mentions...
                 </>
+              ) : signingIn ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Opening Google...
+                </>
               ) : (
                 <>
                   <Search className="size-4" strokeWidth={1.8} />
-                  {activeMode === "phone" ? "Scan Phone Number" : "Scan Email Address"}
+                  {user
+                    ? activeMode === "phone"
+                      ? "Scan Phone Number"
+                      : "Scan Email Address"
+                    : "Sign in to scan"}
                 </>
               )}
             </button>

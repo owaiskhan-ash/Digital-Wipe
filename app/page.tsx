@@ -175,11 +175,11 @@ const QUESTIONS = [
   },
   {
     q: "Do I need an account?",
-    a: "No. A scan runs without signing in and the report is kept in your browser. Signing in with Google is optional: it syncs your report to a private record only you can read and unlocks one-click sending through the Gmail API, which requests the send-only scope.",
+    a: "Yes — a scan needs a Google account. That is what keeps every scan attached to a real person, lets a deletion letter send from your own Gmail with the send-only scope, and keeps the search from being used as an open lookup for anyone who finds the page. Signing in takes one tap and asks for no password.",
   },
   {
     q: "What does it cost?",
-    a: "Nothing to scan, and no card is requested. You keep the report, the letters and the tracker whether or not you ever connect an account.",
+    a: "Nothing to scan, and no card is requested. The account is only there to run the scan and keep the report attached to you; it costs nothing and is never used for marketing.",
   },
 ];
 
@@ -609,8 +609,9 @@ export default function HomePage() {
                 The report is yours. So is the choice.
               </h2>
               <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted">
-                Untrace runs without an account, and works the same way if you
-                never create one. Read the{" "}
+                A scan runs on your Google account, so the report belongs to
+                someone and the letters can leave from your own Gmail. Nothing
+                else is asked for. Read the{" "}
                 <Link href="/privacy" className="text-moss underline decoration-moss/30 underline-offset-4 hover:decoration-moss">
                   privacy note
                 </Link>{" "}
@@ -623,10 +624,10 @@ export default function HomePage() {
                 <span className="grid size-9 place-items-center rounded-lg border border-line bg-mist text-ink-soft">
                   <Lock className="size-4" strokeWidth={1.7} aria-hidden />
                 </span>
-                <h3 className="mt-5 text-lg text-ink">In your browser</h3>
+                <h3 className="mt-5 text-lg text-ink">In your browser first</h3>
                 <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
-                  The default. Your report and request history sit in local
-                  storage, on this device, with no server copy and no account.
+                  Your report and request history are written to this device
+                  first, and cleared from the dashboard in one click.
                 </p>
               </div>
 
@@ -634,9 +635,9 @@ export default function HomePage() {
                 <span className="grid size-9 place-items-center rounded-lg border border-line bg-mist text-ink-soft">
                   <ShieldCheck className="size-4" strokeWidth={1.7} aria-hidden />
                 </span>
-                <h3 className="mt-5 text-lg text-ink">With a Google account</h3>
+                <h3 className="mt-5 text-lg text-ink">With your Google account</h3>
                 <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
-                  Optional. Signing in syncs the report to a private record only
+                  The account that runs the scan. It keeps a private copy only
                   you can read and unlocks one-click sending through Gmail, with
                   the send-only scope.
                 </p>
