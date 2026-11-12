@@ -19,11 +19,13 @@ export function ProgressRing({
   stages,
   activeIndex,
   label,
+  complete = false,
 }: {
   progress: number;
   stages: readonly RingStage[];
   activeIndex: number;
   label?: string;
+  complete?: boolean;
 }) {
   const radius = 86;
   const circumference = 2 * Math.PI * radius;
@@ -59,12 +61,18 @@ export function ProgressRing({
       </svg>
 
       <div className="absolute inset-0 grid place-content-center text-center">
-        <p className="font-display text-[2.5rem] leading-none tabular-nums text-ink">
-          {Math.round(clamped)}
-          <span className="text-lg text-muted">%</span>
-        </p>
+        {complete ? (
+          <span className="mx-auto grid size-14 place-items-center rounded-full bg-moss text-paper animate-fade-blur">
+            <Check className="size-7" strokeWidth={2.6} aria-hidden />
+          </span>
+        ) : (
+          <p className="font-display text-[2.5rem] leading-none tabular-nums text-ink">
+            {Math.round(clamped)}
+            <span className="text-lg text-muted">%</span>
+          </p>
+        )}
         <p className="mt-1.5 text-[0.625rem] uppercase tracking-[0.18em] text-muted">
-          {label ?? "searched"}
+          {complete ? "report ready" : label ?? "searched"}
         </p>
       </div>
 

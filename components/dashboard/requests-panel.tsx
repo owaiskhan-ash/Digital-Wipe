@@ -165,7 +165,7 @@ export function RequestsPanel({
         ))}
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
         {visible.map((request) => {
           const overdue =
             request.status === "sent" &&
