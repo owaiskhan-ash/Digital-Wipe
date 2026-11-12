@@ -164,6 +164,15 @@
     animation: var(--animate-fade-blur);
   }
 
+  /* Paper has no scroll to wait for. */
+  @media print {
+    .reveal-pending {
+      opacity: 1;
+      filter: none;
+      transform: none;
+    }
+  }
+
   /* A tap should land instantly, not wait 300ms for a double-tap zoom. */
   :where(button, a, [role="button"]) {
     touch-action: manipulation;

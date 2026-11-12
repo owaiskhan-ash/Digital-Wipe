@@ -285,7 +285,7 @@ export function DashboardView() {
         )}
 
         {/* Stats */}
-        <div data-reveal className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div data-reveal="now" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="Phone Number Mentions"
             value={stats.phoneCount}
