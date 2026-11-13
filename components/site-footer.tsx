@@ -87,6 +87,13 @@ export function SiteFooter() {
               >
                 Source, AGPL-3.0
               </a>
+              <span aria-hidden className="text-line">·</span>
+              <Link
+                href="/admin"
+                className="text-[0.6875rem] tracking-[0.06em] text-muted/70 transition-colors hover:text-ink"
+              >
+                Admin
+              </Link>
             </p>
           </div>
         </div>

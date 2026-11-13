@@ -16,6 +16,7 @@ import type {
   StoredState,
 } from "./types";
 import { addDays } from "./utils";
+import { markExplicitSignIn, recordLoginOnce } from "./audit";
 
 const STORAGE_KEY = "untrace.state.v1";
 const AUTH_ACTIVE_KEY = "untrace.auth.active";
@@ -131,6 +132,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (cancelled) return;
           setUser(currentUser);
           setAuthLoading(false);
+
+          // One row per browser session, so the panel shows who came in rather
+          // than how many pages they opened.
+          if (currentUser) {
+            void recordLoginOnce(currentUser);
+          }
 
           if (unsubscribeRequests) {
             unsubscribeRequests();
@@ -269,6 +276,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async () => {
     setAuthError(null);
     setFirebaseEnabled(true);
+    markExplicitSignIn();
     try {
       const fb = await import("./firebase");
       await fb.signInWithGoogle();

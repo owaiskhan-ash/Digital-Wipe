@@ -243,22 +243,32 @@ export function MobileShell() {
               <div className="mt-7 rounded-xl border border-line bg-moss-soft/50 p-3">
                 <p className="flex items-center gap-1.5 text-xs font-medium text-moss-deep">
                   <ShieldCheck className="size-3.5" strokeWidth={1.8} aria-hidden />
-                  Your report stays in this browser
+                  Your report is tied to your account
                 </p>
                 <p className="mt-1 text-[0.7rem] leading-relaxed text-ink-soft">
-                  No account needed. Sign in only to sync it or send from Gmail.
+                  Signing in is what runs the scan. Clear the report from the
+                  dashboard whenever you like.
                 </p>
               </div>
 
-              <a
-                href={SOURCE_URL}
-                className="mt-5 inline-flex items-center gap-1 text-xs text-muted"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Source on GitHub
-                <ArrowUpRight className="size-3" strokeWidth={1.8} aria-hidden />
-              </a>
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <a
+                  href={SOURCE_URL}
+                  className="inline-flex items-center gap-1 text-xs text-muted"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Source on GitHub
+                  <ArrowUpRight className="size-3" strokeWidth={1.8} aria-hidden />
+                </a>
+                <Link
+                  href="/admin"
+                  onClick={() => setOpen(false)}
+                  className="text-[0.6875rem] tracking-[0.06em] text-muted/70 transition-colors hover:text-ink"
+                >
+                  Admin
+                </Link>
+              </div>
             </div>
           </div>
         </div>

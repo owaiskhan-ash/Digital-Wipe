@@ -20,6 +20,7 @@ import type {
 } from "@/lib/types";
 import { cn, plural } from "@/lib/utils";
 import { useStore } from "@/lib/store";
+import { recordSearch } from "@/lib/audit";
 import type { ComposerSeed } from "./composer";
 
 export function SwarmPanel({
@@ -182,6 +183,15 @@ export function SwarmPanel({
         modeToRun,
         modeToRun === "phone" ? cleanPhone : cleanEmail
       );
+
+      if (user) {
+        void recordSearch(user, {
+          mode: modeToRun,
+          query: modeToRun === "phone" ? cleanPhone : cleanEmail,
+          findings: discovered.length,
+          source: "dashboard",
+        });
+      }
       // Say what was found *and* what could not be shown, so the counts match
       // the list underneath instead of quietly disagreeing with it.
       const skipped = data.diagnostics?.dropped?.total ?? 0;
