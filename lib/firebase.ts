@@ -313,7 +313,10 @@ export function friendlyPhoneAuthError(err: unknown): string {
     case "auth/invalid-app-credential":
       return `reCAPTCHA verification failed for "${host}". Confirm "${host}" is listed under Firebase Console → Authentication → Settings → Authorized domains.`;
     case "auth/operation-not-allowed":
-      return "Phone sign-in is disabled or this country SMS region is not enabled in Firebase Console → Authentication → Sign-in method → Phone.";
+      if (/region/i.test(message)) {
+        return "Firebase SMS Region Policy is blocking this country. Open Firebase Console → Authentication → Settings → SMS region policy, allow India (+91) (or your country), and click Save.";
+      }
+      return "Phone sign-in is disabled in Firebase Console → Authentication → Sign-in method → Phone, or SMS region policy is blocking this country under Authentication → Settings → SMS region policy.";
     case "auth/billing-not-enabled":
     case "auth/quota-exceeded":
       return "SMS quota or Blaze billing is required by Firebase to send live SMS, or add your number under Firebase Console → Authentication → Phone → Phone numbers for testing.";
