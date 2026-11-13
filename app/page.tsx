@@ -105,7 +105,7 @@ const PROMISES = [
   {
     icon: Lock,
     title: "Yours, and only yours",
-    body: "The report stays in your browser. Sign in with Google only if you want it synced across devices and ready to send from Gmail.",
+    body: "The report is kept against your own account, and cleared from the dashboard in one click. Your Google sign-in does exactly three things: run the scan, sync the report, and send from Gmail, with the send-only scope.",
   },
 ];
 
