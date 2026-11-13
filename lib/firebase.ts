@@ -335,12 +335,34 @@ export function friendlyPhoneAuthError(err: unknown): string {
   }
 }
 
-export function createPhoneRecaptchaVerifier(containerEl: HTMLElement): RecaptchaVerifier {
+declare global {
+  interface Window {
+    grecaptcha?: {
+      reset: (widgetId?: number) => void;
+    };
+  }
+}
+
+export function createPhoneRecaptchaVerifier(
+  containerEl: HTMLElement,
+  options?: {
+    size?: "invisible" | "normal";
+    onSolved?: () => void;
+    onExpired?: () => void;
+  }
+): RecaptchaVerifier {
+  phoneAuth.useDeviceLanguage();
   containerEl.innerHTML = "";
   const slot = document.createElement("div");
   containerEl.appendChild(slot);
   return new RecaptchaVerifier(phoneAuth, slot, {
-    size: "invisible",
+    size: options?.size ?? "invisible",
+    callback: () => {
+      options?.onSolved?.();
+    },
+    "expired-callback": () => {
+      options?.onExpired?.();
+    },
   });
 }
 
@@ -348,7 +370,25 @@ export async function sendPhoneOtp(
   e164Phone: string,
   verifier: RecaptchaVerifier
 ): Promise<ConfirmationResult> {
-  return await signInWithPhoneNumber(phoneAuth, e164Phone, verifier);
+  let widgetId: number | undefined;
+  try {
+    widgetId = await verifier.render();
+  } catch {
+    // If render throws before signInWithPhoneNumber, let signInWithPhoneNumber surface exact error
+  }
+
+  try {
+    return await signInWithPhoneNumber(phoneAuth, e164Phone, verifier);
+  } catch (err) {
+    if (typeof window !== "undefined" && typeof widgetId === "number") {
+      try {
+        window.grecaptcha?.reset(widgetId);
+      } catch {
+        // ignore reset errors
+      }
+    }
+    throw err;
+  }
 }
 
 export async function confirmPhoneOtp(

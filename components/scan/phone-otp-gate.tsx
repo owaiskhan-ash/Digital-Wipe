@@ -56,6 +56,7 @@ export function PhoneOtpGate({
   const [otpCode, setOtpCode] = useState("");
   const [otpError, setOtpError] = useState<string | null>(null);
   const [sentToPhone, setSentToPhone] = useState<string | null>(null);
+  const [useVisibleCaptcha, setUseVisibleCaptcha] = useState(false);
   const [verifiedSession, setVerifiedSession] = useState<{
     phoneNumber: string;
     token: string;
@@ -148,7 +149,13 @@ export function PhoneOtpGate({
     cleanupRecaptcha();
 
     try {
-      const verifier = createPhoneRecaptchaVerifier(recaptchaContainerRef.current);
+      const verifier = createPhoneRecaptchaVerifier(recaptchaContainerRef.current, {
+        size: useVisibleCaptcha ? "normal" : "invisible",
+        onExpired: () => {
+          setOtpError("Verification challenge expired. Click Send SMS OTP again.");
+          setOtpStage("idle");
+        },
+      });
       recaptchaVerifierRef.current = verifier;
       const confirmation = await sendPhoneOtp(formatted, verifier);
       confirmationRef.current = confirmation;
@@ -158,7 +165,18 @@ export function PhoneOtpGate({
     } catch (err) {
       cleanupRecaptcha();
       setOtpStage("idle");
-      setOtpError(friendlyPhoneAuthError(err));
+      const code = (err as { code?: string } | null)?.code ?? "";
+      if (
+        !useVisibleCaptcha &&
+        (code === "auth/captcha-check-failed" || code === "auth/invalid-app-credential")
+      ) {
+        setUseVisibleCaptcha(true);
+        setOtpError(
+          "Invisible reCAPTCHA could not complete automatically. Click Send SMS OTP again to complete the visible security check."
+        );
+      } else {
+        setOtpError(friendlyPhoneAuthError(err));
+      }
     }
   };
 
@@ -208,8 +226,11 @@ export function PhoneOtpGate({
 
   return (
     <div className="space-y-3">
-      {/* Hidden mount node for Firebase invisible RecaptchaVerifier */}
-      <div ref={recaptchaContainerRef} className="sr-only" aria-hidden="true" />
+      {/* Unclipped mount node for Firebase RecaptchaVerifier (supports invisible & normal widget) */}
+      <div
+        ref={recaptchaContainerRef}
+        className={useVisibleCaptcha ? "my-1 flex justify-start" : ""}
+      />
 
       <div className="flex flex-col gap-2 sm:flex-row">
         {showExplicitCountrySelect && (
@@ -374,7 +395,8 @@ export function PhoneOtpGate({
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-moss" aria-hidden />
           <span>
             Ownership check required: verify this number with a quick Firebase SMS OTP before
-            searching Google for it.
+            searching Google for it. You may receive an SMS verification message and standard
+            rates may apply.
           </span>
         </p>
       )}
