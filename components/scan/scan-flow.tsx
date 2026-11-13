@@ -13,11 +13,14 @@ import {
   MailCheck,
   Phone,
   Search,
+  ShieldCheck,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import type { BreachExposure, Finding, ScanResult, SwarmAgentReport } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import { ProgressRing } from "@/components/scan/progress-ring";
+import { GoogleMark } from "@/components/google-mark";
 
 const PHONE_STAGES = [
   {
@@ -59,7 +62,15 @@ const CLIENT_TIMEOUT_MS = 50_000;
 
 export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
   const router = useRouter();
-  const { scan: existingScan, saveScan } = useStore();
+  const {
+    scan: existingScan,
+    saveScan,
+    user,
+    authLoading,
+    signIn,
+    authError,
+  } = useStore();
+  const [signingIn, setSigningIn] = useState(false);
   const [scanMode, setScanMode] = useState<"phone" | "email">(
     initialEmail ? "email" : "phone"
   );
@@ -118,6 +129,17 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     };
   }, []);
 
+  const handleSignIn = async () => {
+    setSigningIn(true);
+    setError("");
+    try {
+      await signIn();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
   const cancelScan = () => {
     if (inFlight.current) {
       inFlight.current.cancelled = true;
@@ -152,6 +174,19 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       return;
     }
 
+    // The scan is tied to an account on both sides: the form is not rendered
+    // without one, and the route checks the token this sends.
+    let token: string | null = null;
+    try {
+      token = (await user?.getIdToken()) ?? null;
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      setError("Sign in with Google to run a scan.");
+      return;
+    }
+
     setError("");
     setStatus("running");
     setFinishing(false);
@@ -168,7 +203,10 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     try {
       const response = await fetch("/api/swarm", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+        },
         signal: controller.signal,
         body: JSON.stringify({
           mode: scanMode,
@@ -283,6 +321,97 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       if (inFlight.current === entry) inFlight.current = null;
     }
   };
+
+  // Restoring a previous session: hold the space, do not flash the gate at
+  // someone who is already signed in.
+  if (authLoading) {
+    return (
+      <div className="card p-6 md:p-9" role="status" aria-live="polite">
+        <div className="h-3 w-24 animate-pulse rounded bg-mist" />
+        <div className="mt-5 h-8 w-2/3 animate-pulse rounded bg-mist" />
+        <div className="mt-3 h-4 w-1/2 animate-pulse rounded bg-mist" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div
+        data-reveal="now"
+        className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]"
+      >
+        <div className="card p-6 md:p-9">
+          <p className="inline-flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-[0.2em] text-moss-deep">
+            <ShieldCheck className="size-3.5 text-moss" strokeWidth={1.9} aria-hidden />
+            Sign-in required
+          </p>
+          <h2 className="mt-3 font-display text-[1.75rem] leading-tight md:text-[2.1rem]">
+            A scan runs on your account, not on the open internet.
+          </h2>
+          <p className="mt-3 max-w-lg text-sm leading-relaxed text-ink-soft">
+            Untrace signs you in with Google before it searches. That is what
+            keeps the report attached to a person, lets a deletion letter leave
+            from your own Gmail, and stops the search being used as a free
+            lookup service for anyone who finds the page. We receive your name,
+            email address and avatar — nothing else, and no password.
+          </p>
+
+          {authError ? (
+            <p className="mt-5 flex items-start gap-2 rounded-xl border border-clay/30 bg-clay-soft px-3 py-2 text-xs text-clay">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>{authError}</span>
+            </p>
+          ) : null}
+
+          <div className="mt-7 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSignIn}
+              disabled={signingIn}
+              className="btn btn-primary"
+            >
+              {signingIn ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  Opening Google…
+                </>
+              ) : (
+                <>
+                  <GoogleMark className="size-4" />
+                  Sign in with Google
+                </>
+              )}
+            </button>
+            <Link href="/" className="btn btn-secondary">
+              Back to home
+            </Link>
+          </div>
+
+          <p className="mt-4 text-xs text-muted">
+            The form opens the moment you are back.
+          </p>
+        </div>
+
+        <aside className="card p-6 md:p-7">
+          <p className="text-[0.6875rem] uppercase tracking-[0.2em] text-muted">
+            What the account is for
+          </p>
+          <ul className="mt-5 space-y-4 text-sm text-ink-soft">
+            {[
+              "One scan at a time, attached to a real person.",
+              "Deletion letters send from your own Gmail, with the send-only scope.",
+              "Your report stays yours — clear it from the dashboard whenever you like.",
+            ].map((line) => (
+              <li key={line} className="flex items-start gap-2.5">
+                <Check className="mt-0.5 size-4 shrink-0 text-moss" strokeWidth={2.2} aria-hidden />
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      </div>
+    );
+  }
 
   if (status === "running") {
     const stages = scanMode === "phone" ? PHONE_STAGES : EMAIL_STAGES;
