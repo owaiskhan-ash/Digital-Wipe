@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  AlertCircle,
   ArrowUpRight,
   FileText,
   Home,
@@ -54,7 +55,7 @@ const DRAWER_SECTIONS = [
  */
 export function MobileShell() {
   const pathname = usePathname() || "/";
-  const { user, authLoading, signIn, signOut } = useStore();
+  const { user, authLoading, authError, signIn, signOut } = useStore();
   const [open, setOpen] = useState(false);
   // Kept mounted through the closing animation so the panel slides out
   // instead of vanishing.
@@ -225,18 +226,25 @@ export function MobileShell() {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    disabled={authLoading}
-                    onClick={async () => {
-                      await signIn();
-                      setOpen(false);
-                    }}
-                    className="btn btn-secondary btn-sm mt-3 w-full"
-                  >
-                    <LogIn className="size-4" strokeWidth={1.8} aria-hidden />
-                    Sign in with Google
-                  </button>
+                  <div className="mt-3 space-y-2">
+                    <button
+                      type="button"
+                      disabled={authLoading}
+                      onClick={async () => {
+                        await signIn();
+                      }}
+                      className="btn btn-secondary btn-sm w-full"
+                    >
+                      <LogIn className="size-4" strokeWidth={1.8} aria-hidden />
+                      Sign in with Google
+                    </button>
+                    {authError ? (
+                      <p className="flex items-start gap-2 rounded-xl border border-clay/30 bg-clay-soft px-3 py-2 text-xs text-clay">
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                        <span>{authError}</span>
+                      </p>
+                    ) : null}
+                  </div>
                 )}
               </div>
 

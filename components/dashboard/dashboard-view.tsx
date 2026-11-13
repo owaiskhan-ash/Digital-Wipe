@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  AlertCircle,
   ArrowRight,
   Check,
   Download,
@@ -28,7 +29,7 @@ import { SwarmPanel } from "./swarm-panel";
 type Tab = "swarm" | "requests";
 
 export function DashboardView() {
-  const { hydrated, scan, requests, saveScan, reset, user, signIn } = useStore();
+  const { hydrated, scan, requests, saveScan, reset, user, signIn, authError } = useStore();
   const [tab, setTab] = useState<Tab>("swarm");
   const [scanMode, setScanMode] = useState<"phone" | "email">("phone");
   const [seeds, setSeeds] = useState<ComposerSeed[] | null>(null);
@@ -156,6 +157,12 @@ export function DashboardView() {
               </button>
             ) : null}
           </div>
+          {!user && authError ? (
+            <p className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-xl border border-clay/30 bg-clay-soft px-3.5 py-2.5 text-left text-xs text-clay">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>{authError}</span>
+            </p>
+          ) : null}
         </div>
       </div>
     );
@@ -271,6 +278,12 @@ export function DashboardView() {
             >
               1-click Google Sign In
             </button>
+            {authError ? (
+              <p className="flex w-full items-start gap-2 rounded-xl border border-clay/30 bg-clay-soft px-3 py-2 text-xs text-clay">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                <span>{authError}</span>
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="mt-4 flex items-center justify-between rounded-xl border border-moss/20 bg-moss-soft/50 px-4 py-2.5 text-xs text-moss-deep">

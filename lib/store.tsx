@@ -20,6 +20,7 @@ import { markExplicitSignIn, recordLoginOnce } from "./audit";
 
 const STORAGE_KEY = "untrace.state.v1";
 const AUTH_ACTIVE_KEY = "untrace.auth.active";
+const REDIRECT_PENDING_KEY = "untrace.auth.redirect";
 const EMPTY: StoredState = { scan: null, requests: [], version: 1 };
 
 type StoreValue = {
@@ -68,18 +69,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [firebaseEnabled, setFirebaseEnabled] = useState(false);
 
-  // Initial local state hydration — only load Firebase SDK if user previously signed in
+  // Initial local state hydration & always boot Firebase Auth in the background
+  // so existing sessions and Google OAuth redirect returns never get lost.
   useEffect(() => {
     setState(readLocal());
     setHydrated(true);
     try {
-      if (window.localStorage.getItem(AUTH_ACTIVE_KEY) === "1") {
+      const hasSession = window.localStorage.getItem(AUTH_ACTIVE_KEY) === "1";
+      const hasRedirect = window.sessionStorage.getItem(REDIRECT_PENDING_KEY) === "1";
+      if (hasSession || hasRedirect) {
         setAuthLoading(true);
-        setFirebaseEnabled(true);
       }
     } catch {
       /* storage blocked */
     }
+    setFirebaseEnabled(true);
   }, []);
 
   // Save to local storage for offline / quick reload fallback
@@ -92,7 +96,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, hydrated]);
 
-  // Lazy-loaded Firebase Auth & Firestore listener (only runs when firebaseEnabled is true)
+  // Firebase Auth & Firestore listener
   useEffect(() => {
     if (!firebaseEnabled) return;
 
@@ -123,6 +127,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ]);
 
         if (cancelled) return;
+
+        // Complete any pending signInWithRedirect round-trip first
+        fb.consumeRedirectResult()
+          .then(({ user: redirectUser }) => {
+            if (cancelled) return;
+            try {
+              window.sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+            } catch {
+              /* ignore */
+            }
+            if (redirectUser) {
+              setUser(redirectUser);
+              setAuthLoading(false);
+            }
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            try {
+              window.sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+            } catch {
+              /* ignore */
+            }
+            setAuthError(fb.friendlyGoogleAuthError(err));
+            setAuthLoading(false);
+          });
 
         fb.testConnection().catch((err) => {
           console.warn("Firestore connection check:", err);
@@ -272,24 +301,52 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [firebaseEnabled]);
 
-  // One-click Google Login (lazy-loads Firebase on demand)
+  // One-click Google Login
   const signIn = useCallback(async () => {
     setAuthError(null);
     setFirebaseEnabled(true);
     markExplicitSignIn();
     try {
+      window.localStorage.setItem(AUTH_ACTIVE_KEY, "1");
+      window.sessionStorage.setItem(REDIRECT_PENDING_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+
+    try {
       const fb = await import("./firebase");
-      await fb.signInWithGoogle();
+      const { user: signedInUser, redirecting } = await fb.signInWithGoogle();
+      if (!redirecting) {
+        try {
+          window.sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (signedInUser) {
+        setUser(signedInUser);
+        setAuthLoading(false);
+      }
+    } catch (err: unknown) {
       try {
-        window.localStorage.setItem(AUTH_ACTIVE_KEY, "1");
+        window.sessionStorage.removeItem(REDIRECT_PENDING_KEY);
       } catch {
         /* ignore */
       }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Sign in failed";
-      if (!message.includes("popup-closed-by-user")) {
-        setAuthError(message);
+      const fb = await import("./firebase").catch(() => null);
+      if (fb && !fb.auth.currentUser) {
+        try {
+          window.localStorage.removeItem(AUTH_ACTIVE_KEY);
+        } catch {
+          /* ignore */
+        }
       }
+      const message = fb
+        ? fb.friendlyGoogleAuthError(err)
+        : err instanceof Error
+          ? err.message
+          : "Sign in failed";
+      setAuthError(message);
     }
   }, []);
 

@@ -75,15 +75,18 @@ export function AuthButton() {
     <div className="relative inline-flex items-center" ref={menuRef}>
       {/* Auth error notification / unauthorised domain fix assistant */}
       {authError && !isUnauthorizedDomain && (
-        <div className="absolute right-0 top-12 z-50 flex items-center gap-2 rounded-xl border border-clay/30 bg-clay-soft px-3 py-2 text-xs text-clay shadow-md">
-          <AlertCircle className="size-4 shrink-0" />
-          <span className="max-w-[240px] truncate">{authError}</span>
+        <div
+          role="alert"
+          className="absolute right-0 top-12 z-50 flex w-72 sm:w-80 items-start gap-2 rounded-xl border border-clay/30 bg-clay-soft p-3 text-xs leading-relaxed text-clay shadow-lg"
+        >
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          <span className="flex-1 break-words">{authError}</span>
           <button
             onClick={clearAuthError}
-            className="ml-1 rounded p-0.5 hover:bg-clay/10"
+            className="rounded p-0.5 hover:bg-clay/10"
             aria-label="Dismiss error"
           >
-            <X className="size-3" />
+            <X className="size-3.5" />
           </button>
         </div>
       )}

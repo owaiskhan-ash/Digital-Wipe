@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
   getRedirectResult,
@@ -19,8 +19,10 @@ import {
 } from "firebase/firestore";
 import firebaseConfig from "@/firebase-applet-config.json";
 
-// Initialize Firebase App singleton
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// Initialize Firebase App singleton safely (even if named apps exist first)
+const app =
+  getApps().find((existing) => existing.name === "[DEFAULT]") ??
+  initializeApp(firebaseConfig);
 
 // Secondary isolated app instance dedicated to Phone OTP ownership checks so
 // verifying a phone number never replaces the user's primary Google session.
@@ -70,18 +72,53 @@ export class RedirectInProgress extends Error {
 }
 
 /**
- * Popups are refused by most mobile browsers and by many desktop ones after the
- * first one. When that happens the provider falls back to a full redirect, which
- * finishes on the way back in through consumeRedirectResult().
+ * Only redirect when the browser actually cannot open a popup (blocked or
+ * unsupported environment) AND we are not inside an iframe (Google blocks
+ * accounts.google.com inside iframes via X-Frame-Options: DENY).
  */
-function isPopupUnavailable(err: unknown): boolean {
+function shouldFallbackToRedirect(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code ?? "";
-  return [
-    "auth/popup-blocked",
-    "auth/popup-closed-by-user",
-    "auth/cancelled-popup-request",
-    "auth/operation-not-supported-in-this-environment",
-  ].includes(code);
+  if (
+    code !== "auth/popup-blocked" &&
+    code !== "auth/operation-not-supported-in-this-environment"
+  ) {
+    return false;
+  }
+  if (typeof window !== "undefined") {
+    try {
+      if (window.self !== window.top) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function friendlyGoogleAuthError(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code ?? "";
+  const rawMessage = err instanceof Error ? err.message : String(err ?? "");
+  const host = typeof window !== "undefined" ? window.location.hostname : "this domain";
+
+  switch (code) {
+    case "auth/unauthorized-domain":
+      return `Firebase blocked sign-in because "${host}" is not in Authorized domains (auth/unauthorized-domain).`;
+    case "auth/popup-blocked":
+      return "Your browser blocked the Google sign-in popup. Please allow popups for this site or open this page in a new tab and click Sign in again.";
+    case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
+      return "The Google sign-in popup was closed before finishing. Click Sign in again to complete login.";
+    case "auth/operation-not-allowed":
+      return "Google sign-in is disabled in Firebase Console → Authentication → Sign-in method.";
+    case "auth/network-request-failed":
+      return "Could not reach Google Authentication. Check your internet connection and try again.";
+    case "auth/internal-error":
+      return "Google sign-in encountered a browser restriction (third-party cookies or popup blocked). Try opening the site directly in a new tab.";
+    default:
+      if (/unauthorized-domain/i.test(rawMessage)) {
+        return `Firebase blocked sign-in because "${host}" is not in Authorized domains (auth/unauthorized-domain).`;
+      }
+      return rawMessage || "Sign in failed. Please try again.";
+  }
 }
 
 // Basic provider for 1-click website login (only openid, email, profile, avoids 403 on initial login)
@@ -95,7 +132,7 @@ gmailGoogleProvider.addScope("https://www.googleapis.com/auth/gmail.send");
 
 export async function signInWithGoogle(
   includeGmailScope = false
-): Promise<{ user: User | null; accessToken: string | null }> {
+): Promise<{ user: User | null; accessToken: string | null; redirecting: boolean }> {
   const provider = includeGmailScope ? gmailGoogleProvider : basicGoogleProvider;
 
   try {
@@ -105,17 +142,17 @@ export async function signInWithGoogle(
     if (token) {
       setCachedAccessToken(token);
     }
-    return { user: result.user, accessToken: token };
+    return { user: result.user, accessToken: token, redirecting: false };
   } catch (err) {
-    if (!isPopupUnavailable(err)) throw err;
+    if (!shouldFallbackToRedirect(err)) throw err;
     await signInWithRedirect(auth, provider);
-    return { user: null, accessToken: null };
+    return { user: null, accessToken: null, redirecting: true };
   }
 }
 
 /**
- * Completes a redirect sign-in. Called once when the app starts so the Gmail
- * token from the round trip is already cached when the user presses Send.
+ * Completes a redirect sign-in. Called once when the app starts so both
+ * basic login and Gmail token from the round trip are restored cleanly.
  */
 export async function consumeRedirectResult(): Promise<{
   user: User | null;
@@ -146,11 +183,12 @@ export async function ensureGmailToken(): Promise<string> {
   if (fromRedirect.accessToken) return fromRedirect.accessToken;
 
   // Ask for the send scope at the moment of sending, not at sign-in.
-  const { accessToken, user } = await signInWithGoogle(true);
-  if (!accessToken) {
-    // Either the browser redirected (it is already navigating away) or Google
-    // returned a session without an access token.
+  const { accessToken, user, redirecting } = await signInWithGoogle(true);
+  if (redirecting) {
     throw new RedirectInProgress();
+  }
+  if (!accessToken) {
+    throw new Error("Google did not grant Gmail send permission. Please try again and allow Gmail access.");
   }
   if (!user) {
     throw new Error("Google did not return an account. Please sign in again.");
