@@ -3,9 +3,12 @@ import {
   getAuth,
   getRedirectResult,
   GoogleAuthProvider,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
   signInWithPopup,
   signInWithRedirect,
   signOut,
+  type ConfirmationResult,
   type User,
 } from "firebase/auth";
 import {
@@ -19,12 +22,19 @@ import firebaseConfig from "@/firebase-applet-config.json";
 // Initialize Firebase App singleton
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
+// Secondary isolated app instance dedicated to Phone OTP ownership checks so
+// verifying a phone number never replaces the user's primary Google session.
+const phoneApp =
+  getApps().find((existing) => existing.name === "phone-verify") ??
+  initializeApp(firebaseConfig, "phone-verify");
+
 export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
 const firestoreDatabaseId =
   (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId ||
   "ai-studio-digitalwipe-70381357-2135-48e4-8de0-95bd491f83bd";
 export const db: Firestore = getFirestore(app, firestoreDatabaseId);
 export const auth = getAuth(app);
+export const phoneAuth = getAuth(phoneApp);
 
 // In-memory access token cache for Google Workspace APIs (never stored in localStorage).
 // Google access tokens live about an hour, so the cache carries its own deadline
@@ -208,4 +218,130 @@ export async function testConnection() {
       console.error("Please check your Firebase configuration.");
     }
   }
+}
+
+export function normalizeToE164(
+  rawPhone: string,
+  defaultCountryCode = "+91"
+): string | null {
+  const trimmed = rawPhone.trim();
+  if (!trimmed) return null;
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return null;
+
+  if (trimmed.startsWith("+")) {
+    return `+${digits}`;
+  }
+  if (trimmed.startsWith("00") && digits.length > 9) {
+    return `+${digits.slice(2)}`;
+  }
+
+  const cleanLocal = digits.replace(/^0+/, "");
+  if (!cleanLocal) return null;
+
+  const ccDigits = defaultCountryCode.replace(/\D/g, "") || "91";
+  // If the user already typed the country code without "+", avoid double-prefixing
+  if (cleanLocal.length > 10 && cleanLocal.startsWith(ccDigits)) {
+    return `+${cleanLocal}`;
+  }
+  return `+${ccDigits}${cleanLocal}`;
+}
+
+export function phonesMatch(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  if (!a || !b) return false;
+  const da = a.replace(/\D/g, "").replace(/^0+/, "");
+  const db = b.replace(/\D/g, "").replace(/^0+/, "");
+  if (!da || !db) return false;
+  if (da === db) return true;
+  // Allow matching a 10-digit local input against a verified E.164 number with country code
+  if (da.length === 10 && db.length > 10 && db.endsWith(da)) return true;
+  if (db.length === 10 && da.length > 10 && da.endsWith(db)) return true;
+  return false;
+}
+
+export function friendlyPhoneAuthError(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code ?? "";
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  const host = typeof window !== "undefined" ? window.location.hostname : "this domain";
+
+  switch (code) {
+    case "auth/unauthorized-domain":
+      return `Add "${host}" to Firebase Console → Authentication → Settings → Authorized domains, then retry.`;
+    case "auth/captcha-check-failed":
+    case "auth/invalid-app-credential":
+      return `reCAPTCHA verification failed for "${host}". Confirm "${host}" is listed under Firebase Console → Authentication → Settings → Authorized domains.`;
+    case "auth/operation-not-allowed":
+      return "Phone sign-in is disabled or this country SMS region is not enabled in Firebase Console → Authentication → Sign-in method → Phone.";
+    case "auth/billing-not-enabled":
+    case "auth/quota-exceeded":
+      return "SMS quota or Blaze billing is required by Firebase to send live SMS, or add your number under Firebase Console → Authentication → Phone → Phone numbers for testing.";
+    case "auth/invalid-phone-number":
+      return "Please enter a valid phone number with country code (for example, +91 9819708112).";
+    case "auth/missing-phone-number":
+      return "Please enter a phone number first.";
+    case "auth/invalid-verification-code":
+      return "That 6-digit OTP code does not match. Check the SMS and try again.";
+    case "auth/code-expired":
+      return "That OTP code has expired. Request a new code and try again.";
+    case "auth/too-many-requests":
+      return "Too many SMS attempts from this device or number. Wait a few minutes before requesting another OTP.";
+    default:
+      if (/unauthorized-domain/i.test(message)) {
+        return `Add "${host}" to Firebase Console → Authentication → Settings → Authorized domains, then retry.`;
+      }
+      return message || "Could not verify your phone number. Please try again.";
+  }
+}
+
+export function createPhoneRecaptchaVerifier(containerEl: HTMLElement): RecaptchaVerifier {
+  containerEl.innerHTML = "";
+  const slot = document.createElement("div");
+  containerEl.appendChild(slot);
+  return new RecaptchaVerifier(phoneAuth, slot, {
+    size: "invisible",
+  });
+}
+
+export async function sendPhoneOtp(
+  e164Phone: string,
+  verifier: RecaptchaVerifier
+): Promise<ConfirmationResult> {
+  return await signInWithPhoneNumber(phoneAuth, e164Phone, verifier);
+}
+
+export async function confirmPhoneOtp(
+  confirmation: ConfirmationResult,
+  otpCode: string
+): Promise<{ phoneNumber: string; token: string }> {
+  const credential = await confirmation.confirm(otpCode.trim());
+  const token = await credential.user.getIdToken(true);
+  const verifiedPhone = credential.user.phoneNumber;
+  if (!verifiedPhone) {
+    throw new Error("Firebase did not return a verified phone number.");
+  }
+  return { phoneNumber: verifiedPhone, token };
+}
+
+export async function getVerifiedPhoneToken(): Promise<{
+  phoneNumber: string | null;
+  token: string | null;
+}> {
+  const current = phoneAuth.currentUser;
+  if (!current?.phoneNumber) {
+    return { phoneNumber: null, token: null };
+  }
+  try {
+    const token = await current.getIdToken();
+    return { phoneNumber: current.phoneNumber, token };
+  } catch {
+    return { phoneNumber: null, token: null };
+  }
+}
+
+export async function clearPhoneVerification(): Promise<void> {
+  await signOut(phoneAuth).catch(() => {});
 }

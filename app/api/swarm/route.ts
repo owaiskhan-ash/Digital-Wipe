@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { scanAuthMessage, verifyScanCaller } from "@/lib/scan-auth";
+import {
+  scanAuthMessage,
+  verifyPhoneOwnershipToken,
+  verifyScanCaller,
+} from "@/lib/scan-auth";
 import {
   domainFromTitle,
   domainFromUrl,
@@ -1001,6 +1005,18 @@ export async function POST(request: Request) {
       },
       { status: 422 }
     );
+  }
+
+  // Phone scans require SMS OTP ownership verification so callers can only look
+  // up their own phone number. Email scans continue using Google sign-in.
+  if (mode === "phone") {
+    const phoneCheck = await verifyPhoneOwnershipToken(request, phoneTarget);
+    if (!phoneCheck.ok) {
+      return NextResponse.json(
+        { error: phoneCheck.error, code: phoneCheck.code },
+        { status: phoneCheck.status, headers: { "Cache-Control": "no-store" } }
+      );
+    }
   }
 
   const deadline = Date.now() + SCAN_BUDGET_MS;

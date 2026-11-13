@@ -17,10 +17,12 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { recordSearch } from "@/lib/audit";
+import { getVerifiedPhoneToken, phonesMatch } from "@/lib/firebase";
 import type { BreachExposure, Finding, ScanResult, SwarmAgentReport } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ProgressRing } from "@/components/scan/progress-ring";
+import { PhoneOtpGate } from "@/components/scan/phone-otp-gate";
 import { GoogleMark } from "@/components/google-mark";
 
 const PHONE_STAGES = [
@@ -76,6 +78,10 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     initialEmail ? "email" : "phone"
   );
   const [phone, setPhone] = useState("");
+  const [verifiedPhoneSession, setVerifiedPhoneSession] = useState<{
+    phoneNumber: string;
+    token: string;
+  } | null>(null);
   const [email, setEmail] = useState(initialEmail);
   const [fullName, setFullName] = useState("");
   const [agreed, setAgreed] = useState(true);
@@ -188,6 +194,24 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       return;
     }
 
+    let phoneOtpToken: string | null = null;
+    if (scanMode === "phone") {
+      const livePhone = await getVerifiedPhoneToken();
+      if (livePhone.token && livePhone.phoneNumber && phonesMatch(livePhone.phoneNumber, cleanPhone)) {
+        phoneOtpToken = livePhone.token;
+      } else if (
+        verifiedPhoneSession?.token &&
+        phonesMatch(verifiedPhoneSession.phoneNumber, cleanPhone)
+      ) {
+        phoneOtpToken = verifiedPhoneSession.token;
+      }
+
+      if (!phoneOtpToken) {
+        setError("Please verify your phone number via SMS OTP first before running a phone scan.");
+        return;
+      }
+    }
+
     setError("");
     setStatus("running");
     setFinishing(false);
@@ -202,12 +226,17 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
     const timeoutId = window.setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
 
     try {
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      };
+      if (phoneOtpToken) {
+        headers["x-phone-auth-token"] = phoneOtpToken;
+      }
+
       const response = await fetch("/api/swarm", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-        },
+        headers,
         signal: controller.signal,
         body: JSON.stringify({
           mode: scanMode,
@@ -661,23 +690,21 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
 
         <div className="mt-5 space-y-5 md:mt-7 md:space-y-6">
           {scanMode === "phone" ? (
-            <div className="rounded-2xl border border-moss/30 bg-moss-soft/35 p-4 md:p-6">
+            <div className="rounded-2xl border border-moss/30 bg-moss-soft/35 p-4 md:p-6 space-y-3">
               <label className="label flex items-start gap-2 text-[0.9375rem] leading-snug md:items-center md:text-base" htmlFor="phoneInput">
                 <Phone className="size-4 text-moss" />
                 Enter Phone Number to Find Across the Internet <span className="text-clay">*</span>
               </label>
-              <input
-                id="phoneInput"
-                type="tel"
-                className="field mt-2 bg-surface font-mono text-base py-3.5"
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                placeholder="Enter your phone number"
-                autoComplete="tel"
-                inputMode="tel"
-                required
+              <PhoneOtpGate
+                phone={phone}
+                onPhoneChange={(val) => {
+                  setPhone(val);
+                  setError("");
+                }}
+                onVerifiedChange={(verified) => setVerifiedPhoneSession(verified)}
+                inputId="phoneInput"
               />
-              <p className="mt-2.5 text-xs leading-relaxed text-muted">
+              <p className="text-xs leading-relaxed text-muted">
                 Searches Google for every website, agency page, blog post, case study, and
                 caller-ID directory where this exact number is posted, and scrapes the contact
                 email from each site so you can demand removal.
@@ -755,8 +782,16 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5 md:mt-8 md:pt-6">
-          <button type="submit" className="btn btn-primary" disabled={!agreed}>
-            {scanMode === "phone" ? "Run Phone Number Scan" : "Run Email Scan"}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={!agreed || (scanMode === "phone" && !verifiedPhoneSession)}
+          >
+            {scanMode === "phone"
+              ? verifiedPhoneSession
+                ? "Run Phone Number Scan"
+                : "Verify Number via OTP First"
+              : "Run Email Scan"}
             <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </button>
           <span className="text-xs text-muted sm:ml-auto">

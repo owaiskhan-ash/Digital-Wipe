@@ -21,6 +21,8 @@ import type {
 import { cn, plural } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { recordSearch } from "@/lib/audit";
+import { getVerifiedPhoneToken, phonesMatch } from "@/lib/firebase";
+import { PhoneOtpGate } from "@/components/scan/phone-otp-gate";
 import type { ComposerSeed } from "./composer";
 
 export function SwarmPanel({
@@ -54,6 +56,10 @@ export function SwarmPanel({
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [phoneInput, setPhoneInput] = useState(profile.phones[0] || "");
+  const [verifiedPhoneSession, setVerifiedPhoneSession] = useState<{
+    phoneNumber: string;
+    token: string;
+  } | null>(null);
   const [emailInput, setEmailInput] = useState(profile.emails[0] || "");
 
   const resolveContactEmail = async (finding: Finding) => {
@@ -140,6 +146,24 @@ export function SwarmPanel({
       return;
     }
 
+    let phoneOtpToken: string | null = null;
+    if (modeToRun === "phone") {
+      const livePhone = await getVerifiedPhoneToken();
+      if (livePhone.token && livePhone.phoneNumber && phonesMatch(livePhone.phoneNumber, cleanPhone)) {
+        phoneOtpToken = livePhone.token;
+      } else if (
+        verifiedPhoneSession?.token &&
+        phonesMatch(verifiedPhoneSession.phoneNumber, cleanPhone)
+      ) {
+        phoneOtpToken = verifiedPhoneSession.token;
+      }
+
+      if (!phoneOtpToken) {
+        setError("Please verify your phone number via SMS OTP first before running a phone scan.");
+        return;
+      }
+    }
+
     setRunning(true);
     setError(null);
 
@@ -149,12 +173,17 @@ export function SwarmPanel({
     const timeoutId = window.setTimeout(() => controller.abort(), 50_000);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+      if (phoneOtpToken) {
+        headers["x-phone-auth-token"] = phoneOtpToken;
+      }
+
       const response = await fetch("/api/swarm", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         signal: controller.signal,
         body: JSON.stringify({
           mode: modeToRun,
@@ -307,69 +336,74 @@ export function SwarmPanel({
               e.preventDefault();
               runScan(activeMode);
             }}
-            className="mt-5 flex flex-col gap-3 sm:flex-row"
+            className="mt-5 space-y-3"
           >
-            <div className="relative flex-1">
-              {activeMode === "phone" ? (
-                <>
-                  <Phone
-                    className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-moss"
-                    strokeWidth={1.8}
-                  />
-                  <input
-                    type="tel"
-                    value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="Enter phone number to scan"
-                    className="field bg-surface pl-10 font-mono text-sm"
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <div className="flex-1 min-w-0">
+                {activeMode === "phone" ? (
+                  <PhoneOtpGate
+                    phone={phoneInput}
+                    onPhoneChange={(val) => {
+                      setPhoneInput(val);
+                      setError(null);
+                    }}
+                    onVerifiedChange={(verified) => setVerifiedPhoneSession(verified)}
                     disabled={running}
+                    compact
+                    inputId="dashboardPhoneInput"
                   />
-                </>
-              ) : (
-                <>
-                  <Mail
-                    className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-moss"
-                    strokeWidth={1.8}
-                  />
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    placeholder="Enter email address to scan"
-                    className="field bg-surface pl-10 font-mono text-sm"
-                    disabled={running}
-                  />
-                </>
-              )}
-            </div>
+                ) : (
+                  <div className="relative">
+                    <Mail
+                      className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-moss"
+                      strokeWidth={1.8}
+                    />
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="Enter email address to scan"
+                      className="field bg-surface pl-10 font-mono text-sm"
+                      disabled={running}
+                    />
+                  </div>
+                )}
+              </div>
 
-            <button
-              type={user ? "submit" : "button"}
-              onClick={user ? undefined : handleSignIn}
-              disabled={running || signingIn}
-              className="btn btn-primary shrink-0 flex items-center gap-2"
-            >
-              {running ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Searching Google for Web Mentions...
-                </>
-              ) : signingIn ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Opening Google...
-                </>
-              ) : (
-                <>
-                  <Search className="size-4" strokeWidth={1.8} />
-                  {user
-                    ? activeMode === "phone"
-                      ? "Scan Phone Number"
-                      : "Scan Email Address"
-                    : "Sign in to scan"}
-                </>
-              )}
-            </button>
+              <button
+                type={user ? "submit" : "button"}
+                onClick={user ? undefined : handleSignIn}
+                disabled={
+                  running ||
+                  signingIn ||
+                  (Boolean(user) && activeMode === "phone" && !verifiedPhoneSession)
+                }
+                className="btn btn-primary shrink-0 flex items-center gap-2"
+              >
+                {running ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Searching Google for Web Mentions...
+                  </>
+                ) : signingIn ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Opening Google...
+                  </>
+                ) : (
+                  <>
+                    <Search className="size-4" strokeWidth={1.8} />
+                    {user
+                      ? activeMode === "phone"
+                        ? verifiedPhoneSession
+                          ? "Scan Phone Number"
+                          : "Verify via OTP First"
+                        : "Scan Email Address"
+                      : "Sign in to scan"}
+                  </>
+                )}
+              </button>
+            </div>
           </form>
 
           {error && (
