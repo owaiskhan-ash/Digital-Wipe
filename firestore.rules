@@ -28,6 +28,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // The owner of the site. Firestore rules cannot read environment variables,
+    // so this list is written by hand and must match lib/admin.ts.
+    function isAdmin() {
+      return isVerified()
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() in ['ashketchupkeke@gmail.com'];
+    }
+
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -78,6 +86,46 @@ service cloud.firestore {
         && (!('followUpAt' in data) || (data.followUpAt is string && data.followUpAt.size() <= 64))
         && (!('removalUrl' in data) || (data.removalUrl is string && data.removalUrl.size() <= 512))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // Login Record Validator: a user may only log themselves in, once per session.
+    function isValidLogin(data) {
+      return data.keys().hasAll(['uid', 'email', 'at', 'via'])
+        && data.keys().hasOnly(['uid', 'email', 'name', 'at', 'via', 'ua'])
+        && data.uid is string && data.uid == request.auth.uid
+        && data.email is string && data.email.size() <= 256
+        && data.at is string && data.at.size() <= 64
+        && data.via in ['google', 'restore']
+        && (!('name' in data) || (data.name is string && data.name.size() <= 128))
+        && (!('ua' in data) || (data.ua is string && data.ua.size() <= 200));
+    }
+
+    // Search Record Validator: one row per completed scan, for the owner's ledger.
+    function isValidSearch(data) {
+      return data.keys().hasAll(['uid', 'email', 'mode', 'query', 'findings', 'at'])
+        && data.keys().hasOnly(['uid', 'email', 'mode', 'query', 'findings', 'at', 'source'])
+        && data.uid is string && data.uid == request.auth.uid
+        && data.email is string && data.email.size() <= 256
+        && data.mode in ['phone', 'email']
+        && data.query is string && data.query.size() > 0 && data.query.size() <= 128
+        && data.findings is number && data.findings >= 0
+        && data.at is string && data.at.size() <= 64
+        && (!('source' in data) || (data.source is string && data.source.size() <= 32));
+    }
+
+    // Sign-in ledger. A signed-in user writes their own row; only the owner reads
+    // across accounts, and nobody may edit or delete history.
+    match /logins/{loginId} {
+      allow create: if isVerified() && isValidLogin(incoming());
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Search ledger. Same shape: the user writes their own search, the owner reads.
+    match /searches/{searchId} {
+      allow create: if isVerified() && isValidSearch(incoming());
+      allow read: if isAdmin();
+      allow update, delete: if false;
     }
 
     // User Profile Documents

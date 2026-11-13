@@ -16,6 +16,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { recordSearch } from "@/lib/audit";
 import type { BreachExposure, Finding, ScanResult, SwarmAgentReport } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -276,6 +277,16 @@ export function ScanFlow({ initialEmail = "" }: { initialEmail?: string }) {
       };
 
       saveScan(scanResult);
+
+      // Keep the owner's audit trail: what was searched, and what came back.
+      if (user) {
+        void recordSearch(user, {
+          mode: scanMode,
+          query: scanMode === "phone" ? cleanPhone : cleanEmail,
+          findings: incomingFindings.length,
+          source: "scan",
+        });
+      }
 
       // Done, and say so: the arc sweeps to 100, the ring becomes a tick, and
       // the page has a beat to show what was found before the report opens.
