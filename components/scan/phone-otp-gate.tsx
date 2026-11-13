@@ -396,7 +396,25 @@ export function PhoneOtpGate({
           <span>
             Ownership check required: verify this number with a quick Firebase SMS OTP before
             searching Google for it. You may receive an SMS verification message and standard
-            rates may apply.
+            rates may apply. Protected by reCAPTCHA (
+            <a
+              href="https://policies.google.com/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-ink"
+            >
+              Privacy
+            </a>
+            {" · "}
+            <a
+              href="https://policies.google.com/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-ink"
+            >
+              Terms
+            </a>
+            ).
           </span>
         </p>
       )}

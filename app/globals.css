@@ -395,3 +395,9 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-line-strong) transparent;
 }
+
+/* Hide the floating corner reCAPTCHA badge (inline notice shown inside PhoneOtpGate) */
+.grecaptcha-badge {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
