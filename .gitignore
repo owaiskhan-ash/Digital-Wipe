@@ -13,3 +13,6 @@ tsconfig.tsbuildinfo
 
 # Scratch renders from scripts/render-preview.ts
 .preview-*.png
+
+# Downloadable model bundle (generated; sources live in public/models/)
+cute-dino-3d-model.zip
