@@ -10,3 +10,6 @@ dist
 next-env.d.ts
 tsconfig.tsbuildinfo
 .vercel
+
+# Scratch renders from scripts/render-preview.ts
+.preview-*.png

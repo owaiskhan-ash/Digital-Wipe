@@ -8,6 +8,7 @@ const NAV = [
   { href: "/#sources", label: "The landscape" },
   { href: "/#laws", label: "Legal rights" },
   { href: "/#questions", label: "Questions" },
+  { href: "/dino", label: "3D dino" },
 ];
 
 export function SiteHeader() {
