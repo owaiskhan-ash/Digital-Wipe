@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { HeroDemo } from "@/components/landing/hero-demo";
+import { LegalRights } from "@/components/landing/legal-rights";
 import { CategoryIcon, SectionLabel } from "@/components/ui";
 import { CATEGORIES, type Category } from "@/lib/types";
 import {
@@ -106,45 +108,6 @@ const PROMISES = [
     icon: Lock,
     title: "Yours, and only yours",
     body: "The report is kept against your own account, and cleared from the dashboard in one click. Your Google sign-in does exactly three things: run the scan, sync the report, and send from Gmail, with the send-only scope.",
-  },
-];
-
-const LAWS = [
-  {
-    country: "United States",
-    law: "CCPA, as amended by the CPRA",
-    deadline: "45 days",
-    escalation: "California Privacy Protection Agency or your state attorney general",
-  },
-  {
-    country: "United Kingdom",
-    law: "UK GDPR, Article 17, and the Data Protection Act 2018",
-    deadline: "One month",
-    escalation: "Information Commissioner's Office",
-  },
-  {
-    country: "European Union",
-    law: "GDPR, Article 17, right to erasure",
-    deadline: "One month",
-    escalation: "Your national supervisory authority",
-  },
-  {
-    country: "India",
-    law: "Digital Personal Data Protection Act 2023, sections 12 and 13",
-    deadline: "30 days",
-    escalation: "Data Protection Board of India",
-  },
-  {
-    country: "Canada",
-    law: "PIPEDA, Principle 4.9 and section 8(8)",
-    deadline: "30 days",
-    escalation: "Office of the Privacy Commissioner",
-  },
-  {
-    country: "Australia",
-    law: "Privacy Act 1988, Australian Privacy Principles 11 and 13",
-    deadline: "30 days",
-    escalation: "Office of the Australian Information Commissioner",
   },
 ];
 
@@ -277,11 +240,11 @@ export default function HomePage() {
             <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-paper to-paper/0" />
           </div>
 
-          <div data-reveal className="container-page relative grid items-center gap-14 py-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-24">
+          <div data-reveal className="container-page relative grid items-center gap-14 py-16 lg:grid-cols-[1.08fr_0.92fr] lg:gap-20 lg:py-28 xl:py-32">
             <div className="animate-fade-blur">
               <SectionLabel>AI-powered personal data removal</SectionLabel>
 
-              <h1 className="mt-5 text-[2.5rem] leading-[1.04] tracking-[-0.02em] text-ink sm:text-[3rem] lg:text-[3.5rem]">
+              <h1 className="mt-5 text-[2.5rem] leading-[1.04] tracking-[-0.02em] text-ink sm:text-[3rem] lg:text-[4.25rem] xl:text-[4.6rem]">
                 Hundreds of sites sell
                 <span className="block">your personal data</span>
                 <span className="block text-muted">to anyone who asks.</span>
@@ -306,9 +269,9 @@ export default function HomePage() {
 
               <ul className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3 text-[0.8125rem] text-muted">
                 {[
-                  "Phone Number Scan & Email Scan",
-                  "Live open-web discovery",
-                  "Send from your own Gmail",
+                  "Free scan",
+                  "Review before sending",
+                  "Private by design",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-1.5">
                     <Check className="size-3.5 text-moss" strokeWidth={2.2} aria-hidden />
@@ -318,27 +281,8 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className="animate-fade-in lg:pl-4">
-              <figure className="overflow-hidden rounded-[1.5rem] border border-line bg-surface">
-                <Image
-                  src="/hero.png"
-                  alt="A person gathers floating cards of personal data into a folder as the furthest cards dissolve into dots."
-                  width={1456}
-                  height={720}
-                  priority
-                  className="h-auto w-full"
-                  sizes="(max-width: 1024px) 100vw, 620px"
-                />
-                <figcaption className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3.5">
-                  <span className="text-xs text-muted">
-                    A trace is a record someone else kept.
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs text-ink-soft">
-                    <span className="size-1.5 rounded-full bg-moss" aria-hidden />
-                    Gather it, then let it go
-                  </span>
-                </figcaption>
-              </figure>
+            <div className="hero-demo-wrap animate-fade-in lg:pl-6">
+              <HeroDemo />
             </div>
           </div>
 
@@ -348,7 +292,7 @@ export default function HomePage() {
               <span className="shrink-0 text-[0.6875rem] uppercase tracking-[0.18em] text-muted">
                 Checked
               </span>
-              <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <div className="source-marquee flex flex-wrap gap-x-6 gap-y-1">
                 {TICKER.map((name) => (
                   <span key={name} className="shrink-0 text-[0.8125rem] text-ink-soft/80">
                     {name}
@@ -381,7 +325,7 @@ export default function HomePage() {
               {EXPOSURE.map((item) => (
                 <article
                   key={item.title}
-                  className="card flex flex-col p-7 transition-colors duration-300 hover:border-line-strong"
+                  data-reveal className="card interactive-card flex flex-col p-7"
                 >
                   <span className="grid size-10 place-items-center rounded-xl border border-line bg-mist text-moss">
                     <item.icon className="size-[18px]" strokeWidth={1.6} aria-hidden />
@@ -404,11 +348,11 @@ export default function HomePage() {
               </h2>
             </div>
 
-            <ol className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <ol className="workflow-grid relative mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {STEPS.map((step, index) => (
                 <li
                   key={step.title}
-                  className="card group flex flex-col p-7 transition-colors duration-300 hover:border-line-strong"
+                  data-reveal className="card interactive-card workflow-card group flex flex-col p-7"
                 >
                   <div className="flex items-center justify-between">
                     <span className="grid size-10 place-items-center rounded-xl border border-line bg-mist text-moss">
@@ -449,7 +393,7 @@ export default function HomePage() {
                 return (
                   <article
                     key={category}
-                    className="card flex flex-col p-6 transition-colors duration-300 hover:border-line-strong"
+                    data-reveal className="card interactive-card flex flex-col p-6"
                   >
                     <span className="grid size-9 place-items-center rounded-lg border border-line bg-mist text-ink-soft">
                       <CategoryIcon category={category} className="size-4" />
@@ -469,7 +413,7 @@ export default function HomePage() {
         <section className="border-y border-line bg-surface/60 py-20 md:py-28">
           <div data-reveal className="container-page grid items-center gap-14 lg:grid-cols-[0.92fr_1.08fr]">
             <div>
-              <SectionLabel>The deletion request</SectionLabel>
+              <SectionLabel>Product journey · The deletion request</SectionLabel>
               <h2 className="mt-4 text-[2.1rem] leading-tight sm:text-[2.6rem]">
                 The letter is the hard part. It is already written.
               </h2>
@@ -496,7 +440,7 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className="card overflow-hidden">
+            <div data-reveal className="email-preview card overflow-hidden">
               <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
                 <span className="flex items-center gap-2 text-xs text-muted">
                   <Mail className="size-3.5" strokeWidth={1.7} aria-hidden />
@@ -517,7 +461,7 @@ export default function HomePage() {
               </dl>
 
               <div className="max-h-[22rem] overflow-hidden px-5 py-5 text-[0.78rem] leading-[1.75] text-ink-soft">
-                <p className="whitespace-pre-line">{PREVIEW_EMAIL.body}</p>
+                <p className="email-copy whitespace-pre-line">{PREVIEW_EMAIL.body}</p>
               </div>
 
               <div className="flex items-center justify-between gap-3 border-t border-line bg-mist/50 px-5 py-3.5">
@@ -548,50 +492,7 @@ export default function HomePage() {
 
             {/* Phones: the same rows as cards. A table this wide can only be
                 read by dragging it sideways, and half of it hangs off the edge. */}
-            <div className="mt-10 grid gap-3 md:hidden">
-              {LAWS.map((row) => (
-                <div key={row.country} data-reveal className="card min-w-0 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 text-sm font-medium text-ink">{row.country}</p>
-                    <span className="shrink-0 rounded-full border border-line bg-mist px-2.5 py-1 text-[0.6875rem] font-medium text-ink-soft">
-                      {row.deadline}
-                    </span>
-                  </div>
-                  <p className="mt-2.5 text-[0.8125rem] leading-relaxed text-ink-soft">{row.law}</p>
-                  <p className="mt-2.5 text-xs leading-relaxed text-muted">
-                    <span className="text-[0.625rem] uppercase tracking-[0.12em] text-muted">
-                      If ignored
-                    </span>{" "}
-                    · {row.escalation}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-10 hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[46rem] border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-line-strong text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
-                    <th scope="col" className="py-3 pr-6 font-medium">Country</th>
-                    <th scope="col" className="py-3 pr-6 font-medium">Law cited</th>
-                    <th scope="col" className="py-3 pr-6 font-medium">Answer due</th>
-                    <th scope="col" className="py-3 font-medium">If ignored</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {LAWS.map((row) => (
-                    <tr key={row.country} className="border-b border-line">
-                      <th scope="row" className="py-4 pr-6 font-medium text-ink">
-                        {row.country}
-                      </th>
-                      <td className="py-4 pr-6 text-ink-soft">{row.law}</td>
-                      <td className="py-4 pr-6 text-ink-soft">{row.deadline}</td>
-                      <td className="py-4 text-muted">{row.escalation}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <LegalRights />
 
             <p className="mt-5 text-xs leading-relaxed text-muted">
               Those are statutory maximums, not typical waits. People-search
@@ -686,22 +587,22 @@ export default function HomePage() {
         {/* Closing */}
         <section className="pb-4 pt-20 md:pt-28">
           <div className="container-page">
-            <div className="card flex flex-col items-center gap-6 px-6 py-16 text-center md:py-20">
-              <span className="grid size-11 place-items-center rounded-xl border border-line bg-moss-soft text-moss">
+            <div className="final-cta flex flex-col items-center gap-6 overflow-hidden rounded-[1.5rem] border border-ink-soft/25 bg-ink px-6 py-16 text-center text-paper md:py-20">
+              <span className="cta-shield grid size-11 place-items-center rounded-xl border border-paper/15 bg-paper/10 text-paper">
                 <ShieldCheck className="size-5" strokeWidth={1.6} aria-hidden />
               </span>
-              <h2 className="max-w-xl text-[2.1rem] leading-tight sm:text-[2.8rem]">
+              <h2 className="max-w-xl text-[2.1rem] leading-tight text-paper sm:text-[2.8rem]">
                 Start with the number that keeps ringing.
               </h2>
-              <p className="max-w-md text-sm leading-relaxed text-muted">
+              <p className="max-w-md text-sm leading-relaxed text-paper/65">
                 A scan takes a few seconds. Knowing exactly who holds your data
                 is the part almost nobody has done.
               </p>
-              <Link href="/scan" className="btn btn-primary mt-1">
+              <Link href="/scan" className="btn cta-button mt-1 bg-paper text-ink">
                 Run a free scan
-                <ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
+                <ArrowRight className="cta-arrow size-4" strokeWidth={1.8} aria-hidden />
               </Link>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-paper/55">
                 Free. No card. Nothing sent without your review.
               </p>
             </div>
